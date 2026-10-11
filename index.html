@@ -1,11 +1,213 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Voxel Game</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voxel Game</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#87ceeb;font-family:sans-serif}
+  #info{position:fixed;top:10px;left:10px;color:#fff;background:rgba(0,0,0,.5);padding:8px 12px;border-radius:6px;font-size:14px;pointer-events:none}
+  #cross{position:fixed;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border:2px solid #fff;border-radius:50%;box-sizing:border-box;mix-blend-mode:difference;pointer-events:none}
+  #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);color:#fff;font-size:24px;cursor:pointer;text-align:center;padding:20px}
+</style>
 </head>
-<body style="background:#87ceeb;font-family:sans-serif;text-align:center;padding-top:80px">
-  <h1>My Voxel Game</h1>
-  <p>Coming soon.</p>
+<body>
+<div id="info"></div>
+<div id="cross"></div>
+<div id="start">Click to play<br><br>WASD move, Space jump<br>Left click breaks, right click places<br>Keys 1-4 pick a block</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- World data ----------
+const SX = 32, SY = 20, SZ = 32;
+const blocks = new Uint8Array(SX * SY * SZ); // 0 = air
+const COLORS = [0, 0x5aa832, 0x8b5a2b, 0x808080, 0xb08040];
+const NAMES = ['', 'Grass', 'Dirt', 'Stone', 'Wood'];
+let selected = 1;
+
+function idx(x, y, z) { return x + SX * (z + SZ * y); }
+function get(x, y, z) {
+  if (x < 0 || y < 0 || z < 0 || x >= SX || y >= SY || z >= SZ) return 0;
+  return blocks[idx(x, y, z)];
+}
+function set(x, y, z, v) {
+  if (x < 0 || y < 0 || z < 0 || x >= SX || y >= SY || z >= SZ) return;
+  blocks[idx(x, y, z)] = v;
+}
+
+// Make hilly terrain
+for (let x = 0; x < SX; x++) {
+  for (let z = 0; z < SZ; z++) {
+    const h = Math.max(2, Math.floor(6 + Math.sin(x * 0.25) * 2 + Math.cos(z * 0.2) * 2 + Math.sin((x + z) * 0.1) * 2));
+    for (let y = 0; y <= h; y++) {
+      set(x, y, z, y === h ? 1 : (y > h - 3 ? 2 : 3));
+    }
+  }
+}
+
+// ---------- Scene ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 20, 60);
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 100);
+camera.rotation.order = 'YXZ';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- Build the visible blocks ----------
+const FACES = [
+  { dir: [1, 0, 0],  c: [[1,0,1],[1,0,0],[1,1,0],[1,1,1]], shade: 0.8 },
+  { dir: [-1, 0, 0], c: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]], shade: 0.8 },
+  { dir: [0, 1, 0],  c: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]], shade: 1.0 },
+  { dir: [0, -1, 0], c: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]], shade: 0.5 },
+  { dir: [0, 0, 1],  c: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]], shade: 0.7 },
+  { dir: [0, 0, -1], c: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]], shade: 0.7 }
+];
+const material = new THREE.MeshBasicMaterial({ vertexColors: true });
+let mesh = null;
+
+function rebuild() {
+  const pos = [], col = [];
+  for (let y = 0; y < SY; y++) {
+    for (let z = 0; z < SZ; z++) {
+      for (let x = 0; x < SX; x++) {
+        const b = get(x, y, z);
+        if (!b) continue;
+        const color = new THREE.Color(COLORS[b]);
+        for (const f of FACES) {
+          if (get(x + f.dir[0], y + f.dir[1], z + f.dir[2])) continue;
+          const v = f.c.map(k => [x + k[0], y + k[1], z + k[2]]);
+          for (const i of [0, 1, 2, 0, 2, 3]) {
+            pos.push(v[i][0], v[i][1], v[i][2]);
+            col.push(color.r * f.shade, color.g * f.shade, color.b * f.shade);
+          }
+        }
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); }
+  mesh = new THREE.Mesh(geo, material);
+  scene.add(mesh);
+}
+rebuild();
+
+// ---------- Player ----------
+const p = { x: 16.5, y: 18, z: 16.5 };
+let vy = 0, onGround = false, yaw = 0, pitch = 0;
+const keys = {};
+
+function collides(x, y, z) {
+  const r = 0.3, h = 1.8;
+  for (let ix = Math.floor(x - r); ix <= Math.floor(x + r); ix++)
+    for (let iy = Math.floor(y); iy <= Math.floor(y + h); iy++)
+      for (let iz = Math.floor(z - r); iz <= Math.floor(z + r); iz++)
+        if (get(ix, iy, iz)) return true;
+  return false;
+}
+
+function update(dt) {
+  const fwd = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
+  const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+  const len = Math.hypot(fwd, strafe) || 1;
+  const speed = 5;
+  const vx = (-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe) / len * speed;
+  const vz = (-Math.cos(yaw) * fwd - Math.sin(yaw) * strafe) / len * speed;
+
+  const nx = p.x + vx * dt;
+  if (!collides(nx, p.y, p.z)) p.x = nx;
+  const nz = p.z + vz * dt;
+  if (!collides(p.x, p.y, nz)) p.z = nz;
+
+  if (keys.Space && onGround) { vy = 8; onGround = false; }
+  vy -= 25 * dt;
+  let ny = p.y + vy * dt;
+  if (collides(p.x, ny, p.z)) {
+    if (vy < 0) { ny = Math.floor(ny) + 1; onGround = true; }
+    else { ny = p.y; }
+    vy = 0;
+  } else {
+    onGround = false;
+  }
+  p.y = ny;
+
+  if (p.y < -10) { p.x = 16.5; p.y = 18; p.z = 16.5; vy = 0; }
+
+  camera.position.set(p.x, p.y + 1.6, p.z);
+  camera.rotation.y = yaw;
+  camera.rotation.x = pitch;
+}
+
+// ---------- Breaking and placing ----------
+function raycast() {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const o = camera.position;
+  let prev = null;
+  for (let t = 0; t < 6; t += 0.02) {
+    const x = Math.floor(o.x + dir.x * t);
+    const y = Math.floor(o.y + dir.y * t);
+    const z = Math.floor(o.z + dir.z * t);
+    if (get(x, y, z)) return { hit: [x, y, z], prev: prev };
+    prev = [x, y, z];
+  }
+  return null;
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  const r = raycast();
+  if (!r) return;
+  if (e.button === 0) {
+    if (r.hit[1] > 0) { set(r.hit[0], r.hit[1], r.hit[2], 0); rebuild(); }
+  } else if (e.button === 2 && r.prev) {
+    set(r.prev[0], r.prev[1], r.prev[2], selected);
+    if (collides(p.x, p.y, p.z)) set(r.prev[0], r.prev[1], r.prev[2], 0);
+    else rebuild();
+  }
+});
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ---------- Controls ----------
+const info = document.getElementById('info');
+function showInfo() { info.textContent = 'Block: ' + NAMES[selected] + '  (keys 1-4)'; }
+showInfo();
+
+addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code >= 'Digit1' && e.code <= 'Digit4') { selected = Number(e.code.slice(5)); showInfo(); }
+});
+addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+const startEl = document.getElementById('start');
+startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());
+document.addEventListener('pointerlockchange', () => {
+  startEl.style.display = document.pointerLockElement === renderer.domElement ? 'none' : 'flex';
+});
+document.addEventListener('mousemove', (e) => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  yaw -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch = Math.max(-1.55, Math.min(1.55, pitch));
+});
+
+// ---------- Main loop ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
 </body>
 </html>
