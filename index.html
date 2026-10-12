@@ -70,6 +70,10 @@
   .row .eq{background:#3a6a9a;padding:4px 8px;font-size:12px}
   .hint{color:#999;font-size:12px;margin:10px 0 0}
   .padfocus{outline:3px solid #ffd54a;outline-offset:1px}
+  #death{position:fixed;inset:0;z-index:58;display:none;align-items:center;justify-content:center;background:rgba(120,0,0,.6);color:#fff}
+  .dbox{width:min(420px,90vw);text-align:center}
+  .dbox h1{font-size:52px;margin:0 0 6px;text-shadow:3px 3px 0 rgba(0,0,0,.5)}
+  .dsub{margin-bottom:16px;color:#fcc}
 </style>
 </head>
 <body>
@@ -116,6 +120,14 @@
     <button class="big alt" id="btnBack">Back</button>
   </div>
 </div>
+<div id="death">
+  <div class="dbox">
+    <h1>You died!</h1>
+    <div class="dsub">Your items are safe. What would you like to do?</div>
+    <button class="big" id="btnRespawn">Respawn</button>
+    <button class="big alt" id="btnDeathQuit">Quit to Title</button>
+  </div>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // If something goes wrong, show the error on screen instead of failing silently
@@ -133,6 +145,8 @@ const WATER = 5;
 const CAVE_TUNNEL = 0.08, CAVE_ROOM = 0.76;
 // Wolves: set WOLF_ATTACKS to false to make them harmless. WOLF_AGGRO is how close (in blocks) you can get before they attack.
 const WOLF_ATTACKS = true, WOLF_AGGRO = 5;
+// Forests: lower these numbers for fewer trees, raise them for thicker forests.
+const FOREST_DENSITY = 0.018, SPARSE_DENSITY = 0.003;
 
 // ================= Noise =================
 function hash2(x, z) {
@@ -307,6 +321,21 @@ coralTile(23, 0x9a4ad8, 0xc88aff, 0x602a98);
 oreTile(24, 0xd27a4a, 0x4aa08a); // copper ore
 oreTile(25, 0xf2d23a, 0xfff0a0); // gold ore
 oreTile(26, 0x4ee8e0, 0xffffff); // diamond ore
+// Saplings are drawn on a see-through background so they look like little plants
+function saplingTile(i, leafCol, shape, trunkCol) {
+  const ox = (i % AT) * TS, oy = Math.floor(i / AT) * TS;
+  const P = (x, y, c) => { actx.fillStyle = c; actx.fillRect(ox + x, oy + y, 1, 1); };
+  actx.clearRect(ox, oy, TS, TS);
+  for (let y = 9; y < 16; y++) { P(7, y, hx(trunkCol)); P(8, y, rgb(trunkCol, 0.8)); }
+  const rows = shape === 'cone' ? [1, 2, 2, 3, 3, 4, 4, 5, 5] : [2, 3, 5, 5, 5, 5, 3, 2];
+  const top = shape === 'cone' ? 1 : 2;
+  rows.forEach((hw, k) => {
+    for (let x = 8 - hw; x < 8 + hw; x++) P(x, top + k, rgb(leafCol, 0.75 + rnd() * 0.5));
+  });
+}
+saplingTile(27, 0x3f8f2a, 'blob', 0x6a4a22);
+saplingTile(28, 0x6fae3c, 'blob', 0xe6e3d8);
+saplingTile(29, 0x2b6a3a, 'cone', 0x3b2a1a);
 const atlasTex = new THREE.CanvasTexture(atlas);
 atlasTex.magFilter = THREE.NearestFilter;
 atlasTex.minFilter = THREE.NearestFilter;
@@ -317,9 +346,11 @@ const BT = {
   1:[0,1,2], 2:[2,2,2], 3:[3,3,3], 4:[4,4,4], 5:[5,5,5], 6:[7,6,7], 7:[9,8,9], 8:[11,10,11],
   9:[12,12,12], 10:[13,13,13], 11:[14,14,14], 12:[15,15,15], 13:[16,16,16], 14:[17,17,17],
   15:[18,19,15], 16:[20,20,20], 17:[21,21,21], 18:[22,22,22], 19:[23,23,23],
-  20:[24,24,24], 21:[25,25,25], 22:[26,26,26]
+  20:[24,24,24], 21:[25,25,25], 22:[26,26,26],
+  23:[27,27,27], 24:[28,28,28], 25:[29,29,29]
 };
-function solid(b) { return b !== 0 && b !== WATER; }
+function isPlant(b) { return b >= 23 && b <= 25; } // saplings: 23 oak, 24 birch, 25 spruce
+function solid(b) { return b !== 0 && b !== WATER && !isPlant(b); }
 
 // ================= Items =================
 const ITEMS = {
@@ -338,7 +369,10 @@ const ITEMS = {
   115:{n:'Gold Ingot',k:'ingot',kc:'#f2d23a',dc:0xf2d23a},
   116:{n:'Diamond',k:'gem',kc:'#4ee8e0',dc:0x4ee8e0},
   117:{n:'Wool',k:'wool',dc:0xf2f2f2}, 118:{n:'String',k:'string',dc:0xf2f2f2},
-  119:{n:'Shears',k:'shears',dc:0xd0d0d0}, 120:{n:'Fishing Rod',k:'rod',dc:0x9a7a4a}
+  119:{n:'Shears',k:'shears',dc:0xd0d0d0}, 120:{n:'Fishing Rod',k:'rod',dc:0x9a7a4a},
+  121:{n:'Oak Seeds',k:'seed',kc:'#3f8f2a',dc:0x3f8f2a,plant:23},
+  122:{n:'Birch Seeds',k:'seed',kc:'#6fae3c',dc:0x6fae3c,plant:24},
+  123:{n:'Spruce Seeds',k:'seed',kc:'#2b6a3a',dc:0x2b6a3a,plant:25}
 };
 
 // Tools: pickaxe, axe, sword in six materials (ids 200+)
@@ -388,7 +422,8 @@ const BI = {
   17:{h:0.6,d:17}, 18:{h:0.6,d:18}, 19:{h:0.6,d:19},
   20:{h:3.2,tool:'pick',d:114,minTier:2},
   21:{h:3.8,tool:'pick',d:115,minTier:3},
-  22:{h:4.5,tool:'pick',d:116,minTier:3}
+  22:{h:4.5,tool:'pick',d:116,minTier:3},
+  23:{h:0.05,d:121}, 24:{h:0.05,d:122}, 25:{h:0.05,d:123}
 };
 const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2 };
 
@@ -406,12 +441,27 @@ addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
-const solidMat = new THREE.MeshBasicMaterial({ map: atlasTex, vertexColors: true });
+const solidMat = new THREE.MeshBasicMaterial({ map: atlasTex, vertexColors: true, alphaTest: 0.5 });
 const waterMat = new THREE.MeshBasicMaterial({ map: atlasTex, vertexColors: true, transparent: true, opacity: 0.65, depthWrite: false });
 
 // ================= World / chunks =================
 const chunks = new Map();
 function ck(cx, cz) { return cx * 100003 + cz; }
+
+// A tree grows at a spot if its random number is low enough, and only if no neighbouring spot (within 2 blocks) has an even lower number.
+// That keeps trees spaced out instead of packed trunk to trunk.
+function treeDensity(wx, wz) { return vnoise(wx * 0.03 + 500, wz * 0.03 + 500) > 0.55 ? FOREST_DENSITY : SPARSE_DENSITY; }
+function treeAt(wx, wz) {
+  const hv = hash2(wx * 7 + 13, wz * 11 + 5);
+  if (hv >= treeDensity(wx, wz)) return false;
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+    if (!dx && !dz) continue;
+    const nx = wx + dx, nz = wz + dz;
+    const nh = hash2(nx * 7 + 13, nz * 11 + 5);
+    if (nh < hv && nh < treeDensity(nx, nz)) return false;
+  }
+  return true;
+}
 
 function generateChunk(cx, cz) {
   const data = new Uint8Array(CH * HEIGHT * CH);
@@ -458,8 +508,7 @@ function generateChunk(cx, cz) {
       const h = hm[(lx + 2) + 20 * (lz + 2)];
       if (h <= SEA + 1) continue;
       const wx = ox + lx, wz = oz + lz;
-      const dens = vnoise(wx * 0.03 + 500, wz * 0.03 + 500) > 0.55 ? 0.035 : 0.004;
-      if (hash2(wx * 7 + 13, wz * 11 + 5) >= dens) continue;
+      if (!treeAt(wx, wz)) continue;
       if (h > SEA + 2 && caveAt(wx, h, wz, h)) continue;
       const bn = vnoise(wx * 0.004 + 100, wz * 0.004 - 50);
       const type = bn < 0.38 ? 1 : (bn < 0.66 ? 0 : 2); // 0 oak, 1 birch, 2 spruce
@@ -549,6 +598,26 @@ function meshChunk(c) {
       for (let lx = 0; lx < CH; lx++) {
         const b = d[lx + CH * (lz + CH * y)];
         if (!b) continue;
+        if (b >= 23 && b <= 25) {
+          // saplings are two crossed see-through pictures
+          const ptile = BT[b][1];
+          const pu0 = (ptile % AT) / AT, pv0 = 1 - (Math.floor(ptile / AT) + 1) / AT;
+          const pdep = c.top[lx + CH * lz] - y;
+          const plt = pdep > 3 ? Math.max(0.3, 1 - (pdep - 3) * 0.05) : 1;
+          const planes = [[[0.12, 0, 0.12], [0.88, 0, 0.88], [0.88, 0.9, 0.88], [0.12, 0.9, 0.12]], [[0.88, 0, 0.12], [0.12, 0, 0.88], [0.12, 0.9, 0.88], [0.88, 0.9, 0.12]]];
+          const puv = [[0, 0], [1, 0], [1, 1], [0, 1]];
+          for (const pl of planes) {
+            for (const order of [[0, 1, 2, 0, 2, 3], [0, 2, 1, 0, 3, 2]]) {
+              for (const q of order) {
+                const k = pl[q];
+                sp.push(lx + k[0], y + k[1], lz + k[2]);
+                sc.push(plt, plt, plt);
+                su.push(pu0 + (0.02 + 0.96 * puv[q][0]) / AT, pv0 + (0.02 + 0.96 * puv[q][1]) / AT);
+              }
+            }
+          }
+          continue;
+        }
         const isW = b === WATER;
         const vr = 0.94 + 0.06 * hash2((ox + lx) * 31 + y * 7, (oz + lz) * 17 + y * 3);
         const dep = c.top[lx + CH * lz] - y;
@@ -559,7 +628,7 @@ function meshChunk(c) {
           const F = FACES[f];
           const n = nb(c, lx + F.dir[0], y + F.dir[1], lz + F.dir[2]);
           if (isW) { if (n !== 0) continue; }
-          else if (n !== 0 && n !== WATER) continue;
+          else if (n !== 0 && n !== WATER && !(n >= 23 && n <= 25)) continue;
           const tile = bt[f === 2 ? 0 : (f === 3 ? 2 : 1)];
           const u0 = (tile % AT) / AT, v0 = 1 - (Math.floor(tile / AT) + 1) / AT;
           const s = F.shade * vr * lt;
@@ -878,6 +947,12 @@ function drawKind(cx, k, col) {
     for (let y = 3; y < 12; y++) P(13, y, '#eeeeee');
     P(12, 3, '#eeeeee'); P(13, 12, '#c04040');
   }
+  else if (k === 'seed') {
+    // a little sprout growing from a seed
+    R(6, 11, 5, 3, '#7a5a2a'); P(7, 10, '#7a5a2a'); P(9, 10, '#7a5a2a');
+    R(8, 6, 1, 5, '#4a7a2a');
+    R(4, 5, 4, 2, col); R(9, 3, 4, 2, col); P(4, 5, lite); P(9, 3, lite);
+  }
   else if (k === 'leather') {
     const base = '#9a5a2a', edge = '#5e3515', hi = '#bd7c44', patch = '#84491f', stitch = '#ead6a6';
     R(4, 2, 8, 1, edge); R(4, 13, 8, 1, edge); R(2, 4, 1, 8, edge); R(13, 4, 1, 8, edge);
@@ -1025,6 +1100,7 @@ function refreshStats() {
   document.getElementById('arTxt').textContent = '\uD83D\uDEE1 ' + ap + '/20';
 }
 function hurt(n) {
+  if (dead) return;
   health = Math.max(0, health - n);
   hurtEl.style.opacity = 1;
   rumble(220, 0.7);
@@ -1047,9 +1123,28 @@ function fallHurt(dmg) {
   if (fin > 0) hurt(fin);
 }
 function die() {
-  toast('You died! Respawning...');
-  health = 20; hunger = 20; fallPeak = null; vy = 0;
-  p.x = sp0.x; p.y = sp0.y; p.z = sp0.z;
+  if (dead) return;
+  dead = true;
+  health = 0; refreshStats();
+  attackUp(); cancelFishing();
+  pad.sprint = false; pad.jump = false; pad.crouch = false; pad.mx = 0; pad.my = 0;
+  keys.KeyW = false; keys.KeyA = false; keys.KeyS = false; keys.KeyD = false; keys.Space = false; keys.ArrowDown = false;
+  panelOpen = false; panelEl.style.display = 'none';
+  try { document.exitPointerLock(); } catch (e) {}
+  startEl.style.display = 'none';
+  document.body.style.cursor = '';
+  deathEl.style.display = 'flex';
+  padFocus = 0;
+}
+// bring you back at the world's starting spot with full health and hunger (your items are kept)
+function respawnState() {
+  dead = false;
+  health = 20; hunger = 20; hungerT = 0; regenT = 0; starveT = 0; fallPeak = null; vy = 0; onGround = false;
+  crouching = false; sprinting = false;
+  let sy = sp0.y;
+  for (let k = 0; k < 30 && boxCollides(sp0.x, sy, sp0.z, 0.3, 1.8); k++) sy += 1;
+  p.x = sp0.x; p.y = sy; p.z = sp0.z;
+  deathEl.style.display = 'none';
   refreshStats();
 }
 function updateSurvival(dt) {
@@ -1810,9 +1905,17 @@ function breakBlock(r) {
     toast('You need a better pickaxe to collect this ore.');
     drop = 0;
   }
+  let qty = 1;
+  if (r.b >= 9 && r.b <= 11) {
+    // leaves sometimes drop sticks or seeds for the same kind of tree
+    const roll = Math.random();
+    if (roll < 0.15) { drop = 100; qty = 1 + Math.floor(Math.random() * 2); }
+    else if (roll < 0.27) drop = 121 + (r.b - 9);
+  }
+  if (isPlant(r.b)) removeSaplingAt(x, y, z);
   setBlock(x, y, z, 0);
   // the block pops out as an item you have to walk over to pick up
-  if (drop) dropItem(drop, x + 0.5, y + 0.5, z + 0.5, { vy: 3, delay: 0.5 });
+  if (drop) for (let i = 0; i < qty; i++) dropItem(drop, x + 0.5, y + 0.5, z + 0.5, { vy: 3, delay: 0.5 });
   if (def) wearSel(def.type === 'sword' ? 2 : 1);
 }
 function placeBlock(r) {
@@ -1913,6 +2016,7 @@ function useDown() {
     return;
   }
   if (id === 120) { castOrReel(); return; }
+  if (ITEMS[id] && ITEMS[id].plant) { if (r) plantSeed(r, id); return; }
   if (FOOD[id]) { eat(id); return; }
   if (r) placeBlock(r);
 }
@@ -1927,6 +2031,7 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 // ================= Controls =================
 addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT') return; // typing a world name
+  if (dead) { if (e.code === 'Enter') document.getElementById('btnRespawn').click(); return; }
   if (e.code === 'ArrowDown' || e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyE') {
     if (panelOpen) closePanel(true);
@@ -1953,7 +2058,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked()) startEl.style.display = 'none';
   else {
     leftDown = false; mining = null; crack.visible = false;
-    if (inGame && !panelOpen && !pad.playing) {
+    if (inGame && !dead && !panelOpen && !pad.playing) {
       startTitle.textContent = 'Paused. Click to continue';
       startEl.style.display = 'flex';
       saveWorld(false);
@@ -1991,6 +2096,23 @@ function rumble(ms, strong) {
   } catch (e) {}
 }
 let padPrev = [], padFocus = 0, padRepeat = 0, padWas = false;
+// move between the buttons of a screen with the D-pad or left stick, A presses
+function padNavRoot(root, cur, pressed, ax, dt) {
+  const btns = Array.prototype.slice.call(root.querySelectorAll('button:not(:disabled)')).filter(b => b.offsetParent !== null);
+  padRepeat -= dt;
+  const vy = ax(1);
+  let step = 0;
+  if (pressed(12)) { step = -1; padRepeat = 0.3; }
+  else if (pressed(13)) { step = 1; padRepeat = 0.3; }
+  else if (padRepeat <= 0 && (cur[12] || vy < -0.6)) { step = -1; padRepeat = 0.14; }
+  else if (padRepeat <= 0 && (cur[13] || vy > 0.6)) { step = 1; padRepeat = 0.14; }
+  if (!btns.length) return;
+  if (step) padFocus = (padFocus + step + btns.length) % btns.length;
+  padFocus = Math.max(0, Math.min(padFocus, btns.length - 1));
+  root.querySelectorAll('.padfocus').forEach(b => b.classList.remove('padfocus'));
+  btns[padFocus].classList.add('padfocus');
+  if (pressed(0)) { padTriggered = true; btns[padFocus].click(); padTriggered = false; padFocus = 0; }
+}
 function pollPad(dt) {
   const gp = getPad();
   pad.connected = !!gp;
@@ -2012,23 +2134,9 @@ function pollPad(dt) {
   const released = i => !cur[i] && padPrev[i];
   const ax = i => dz(gp.axes[i] || 0);
 
-  // title screen: D-pad or left stick moves between buttons, A presses
-  if (menuOpen) {
-    const btns = Array.prototype.slice.call(menuEl.querySelectorAll('button:not(:disabled)')).filter(b => b.offsetParent !== null);
-    padRepeat -= dt;
-    const vy = ax(1);
-    let step = 0;
-    if (pressed(12)) { step = -1; padRepeat = 0.3; }
-    else if (pressed(13)) { step = 1; padRepeat = 0.3; }
-    else if (padRepeat <= 0 && (cur[12] || vy < -0.6)) { step = -1; padRepeat = 0.14; }
-    else if (padRepeat <= 0 && (cur[13] || vy > 0.6)) { step = 1; padRepeat = 0.14; }
-    if (btns.length) {
-      if (step) padFocus = (padFocus + step + btns.length) % btns.length;
-      padFocus = Math.max(0, Math.min(padFocus, btns.length - 1));
-      menuEl.querySelectorAll('.padfocus').forEach(b => b.classList.remove('padfocus'));
-      btns[padFocus].classList.add('padfocus');
-      if (pressed(0)) { padTriggered = true; btns[padFocus].click(); padTriggered = false; padFocus = 0; }
-    }
+  // title screen and death screen: D-pad or left stick moves between buttons, A presses
+  if (menuOpen || dead) {
+    padNavRoot(menuOpen ? menuEl : deathEl, cur, pressed, ax, dt);
     padPrev = cur;
     return;
   }
@@ -2101,8 +2209,99 @@ function pollPad(dt) {
 }
 addEventListener('gamepadconnected', () => { if (!active()) toast('Controller connected. Press A to start.'); });
 
+// ================= Planting seeds and growing trees =================
+let saplings = []; // {x, y, z, t (0 oak, 1 birch, 2 spruce), at (the time it is ready to grow)}
+let sapTimer = 0;
+function removeSaplingAt(x, y, z) {
+  for (let i = saplings.length - 1; i >= 0; i--) {
+    const s = saplings[i];
+    if (s.x === x && s.y === y && s.z === z) saplings.splice(i, 1);
+  }
+}
+// right-click the top of grass or dirt with seeds in hand
+function plantSeed(r, id) {
+  const t = r.prev;
+  if (!t || (r.b !== 1 && r.b !== 2)) { toast('Seeds only grow on grass or dirt.'); return; }
+  if (t[0] !== r.hit[0] || t[2] !== r.hit[2] || t[1] !== r.hit[1] + 1) { toast('Plant seeds on the top of the ground.'); return; }
+  if (getBlock(t[0], t[1], t[2]) !== 0) return;
+  const kind = ITEMS[id].plant;
+  setBlock(t[0], t[1], t[2], kind);
+  saplings.push({ x: t[0], y: t[1], z: t[2], t: kind - 23, at: worldTime + 40 + Math.random() * 40 });
+  take(id, 1);
+}
+// turn a sapling into a full tree (gx, gy, gz is the ground block under it)
+function growTree(gx, gy, gz, type) {
+  const th = 4 + Math.floor(Math.random() * 3);
+  const logId = [6, 7, 8][type], leafId = [9, 10, 11][type];
+  for (let y = gy + 1; y <= gy + th; y++) {
+    const b = getBlock(gx, y, gz);
+    if (b !== 0 && !isPlant(b)) return false; // something is in the way
+  }
+  const cells = []; // [x, y, z, block, onlyIntoEmptySpace]
+  if (type === 2) {
+    for (let dy = 0; dy < th; dy++) {
+      const y = gy + th + 1 - dy;
+      const rr = dy === 0 ? 0 : (dy < 3 ? 1 : 2);
+      for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) {
+        if (rr === 2 && Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+        cells.push([gx + dx, y, gz + dz, leafId, true]);
+      }
+    }
+  } else {
+    for (let y = gy + th - 2; y <= gy + th + 1; y++) {
+      const rr = y >= gy + th ? 1 : 2;
+      for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) {
+        if (rr === 2 && Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+        if (y === gy + th + 1 && Math.abs(dx) === 1 && Math.abs(dz) === 1) continue;
+        cells.push([gx + dx, y, gz + dz, leafId, true]);
+      }
+    }
+  }
+  for (let y = gy + 1; y <= gy + th; y++) cells.push([gx, y, gz, logId, false]);
+  const redo = {};
+  for (const c of cells) {
+    const x = c[0], y = c[1], z = c[2];
+    if (y < 1 || y >= HEIGHT) continue;
+    const cx = x >> 4, cz = z >> 4;
+    const ch = chunks.get(ck(cx, cz));
+    if (!ch) continue;
+    const idx = (x & 15) + CH * ((z & 15) + CH * y);
+    const here = ch.data[idx];
+    if (c[4] && here !== 0 && !isPlant(here)) continue;
+    ch.data[idx] = c[3];
+    recordEdit(cx, cz, idx, c[3]);
+    redo[cx + ',' + cz] = [cx, cz];
+    if ((x & 15) === 0) redo[(cx - 1) + ',' + cz] = [cx - 1, cz];
+    if ((x & 15) === CH - 1) redo[(cx + 1) + ',' + cz] = [cx + 1, cz];
+    if ((z & 15) === 0) redo[cx + ',' + (cz - 1)] = [cx, cz - 1];
+    if ((z & 15) === CH - 1) redo[cx + ',' + (cz + 1)] = [cx, cz + 1];
+  }
+  for (const k in redo) remeshAt(redo[k][0], redo[k][1]);
+  return true;
+}
+function updateSaplings(dt) {
+  sapTimer += dt;
+  if (sapTimer < 1) return;
+  sapTimer = 0;
+  for (let i = saplings.length - 1; i >= 0; i--) {
+    const s = saplings[i];
+    if (worldTime < s.at) continue;
+    if (!chunks.get(ck(s.x >> 4, s.z >> 4))) continue; // wait until that area is loaded
+    if (!isPlant(getBlock(s.x, s.y, s.z))) { saplings.splice(i, 1); continue; } // it was dug up or built over
+    const ground = getBlock(s.x, s.y - 1, s.z);
+    if (ground !== 1 && ground !== 2) { // the ground was dug out from under it
+      setBlock(s.x, s.y, s.z, 0);
+      dropItem(121 + s.t, s.x + 0.5, s.y + 0.5, s.z + 0.5, { vy: 3, delay: 0.5 });
+      saplings.splice(i, 1);
+      continue;
+    }
+    if (growTree(s.x, s.y - 1, s.z, s.t)) saplings.splice(i, 1);
+    else s.at = worldTime + 15; // no room yet, try again a bit later
+  }
+}
+
 // ================= Worlds: title screen, saving and loading =================
-let inGame = false, menuOpen = true, cur = null, padTriggered = false;
+let inGame = false, menuOpen = true, cur = null, padTriggered = false, dead = false;
 let edits = {}, editStr = {}, dirtyChunks = {};
 let worldTime = 0, saveTimer = 0, saveWarned = false;
 let sp0 = { x: 8.5, y: 40, z: 8.5 };
@@ -2113,6 +2312,7 @@ const worldNameEl = document.getElementById('worldName');
 const multiNote = document.getElementById('multiNote');
 const darkEl = document.getElementById('dark');
 const startTitle = document.getElementById('startTitle');
+const deathEl = document.getElementById('death');
 
 function lockPointer() {
   try {
@@ -2175,8 +2375,8 @@ function saveWorld(manual) {
   if (!cur || !inGame) return;
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, created: cur.created, played: Date.now(), time: worldTime,
-    spawn: sp0, player: { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: health, hunger: hunger, sel: sel, slots: invSlots, equipped: equipped, edits: packEdits()
+    spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: invSlots, equipped: equipped, edits: packEdits(), saplings: saplings
   };
   if (writeWorld(rec)) {
     const list = loadIndex();
@@ -2203,6 +2403,7 @@ function resetWorldState() {
   edits = {}; editStr = {}; dirtyChunks = {};
   panelOpen = false; panelEl.style.display = 'none';
   leftDown = false; mining = null; crack.visible = false;
+  dead = false; deathEl.style.display = 'none'; saplings = [];
   pad.playing = false; pad.sprint = false;
   document.body.style.cursor = '';
 }
@@ -2225,6 +2426,7 @@ function startWorld(rec) {
   SEED = rec.seed;
   worldTime = rec.time || 0;
   unpackEdits(rec.edits);
+  saplings = rec.saplings || [];
   sp0 = rec.spawn || findSpawn();
   const pl = rec.player || sp0;
   p.x = pl.x; p.y = pl.y; p.z = pl.z;
@@ -2263,6 +2465,7 @@ function showMenu(which) {
   padFocus = 0;
 }
 function quitToTitle() {
+  if (dead) respawnState();
   saveWorld(false);
   inGame = false;
   try { document.exitPointerLock(); } catch (e) {}
@@ -2313,6 +2516,19 @@ document.getElementById('btnNew').addEventListener('click', () => { const nm = w
 document.getElementById('btnBack').addEventListener('click', () => showMenu('home'));
 document.getElementById('btnResume').addEventListener('click', () => lockPointer());
 document.getElementById('btnQuit').addEventListener('click', () => quitToTitle());
+document.getElementById('btnDeathQuit').addEventListener('click', () => quitToTitle());
+document.getElementById('btnRespawn').addEventListener('click', () => {
+  respawnState();
+  if (padTriggered || pad.playing) {
+    pad.playing = true;
+    startEl.style.display = 'none';
+    document.body.style.cursor = 'none';
+  } else {
+    startTitle.textContent = 'Click to play';
+    startEl.style.display = 'flex';
+    lockPointer();
+  }
+});
 // save when you leave the page or switch tabs
 addEventListener('beforeunload', () => saveWorld(false));
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveWorld(false); });
@@ -2402,6 +2618,7 @@ function gameTick(dt) {
   if (r) { wire.visible = true; wire.position.set(r.hit[0] + 0.5, r.hit[1] + 0.5, r.hit[2] + 0.5); }
   else wire.visible = false;
   updateDayNight(dt);
+  updateSaplings(dt);
   saveTimer += dt;
   if (saveTimer > 15) { saveTimer = 0; saveWorld(false); }
 }
@@ -2410,7 +2627,7 @@ function loop(now) {
   last = now;
   frameNo++;
   pollPad(dt);
-  if (inGame && (active() || panelOpen)) gameTick(dt);
+  if (inGame && !dead && (active() || panelOpen)) gameTick(dt);
   if (!menuOpen) renderer.render(scene, camera);
   if (inGame) {
     frames++; fpsTimer += dt;
