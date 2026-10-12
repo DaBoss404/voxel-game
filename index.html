@@ -65,9 +65,15 @@
   </div>
   <p class="hint">Press E or Esc to close</p>
 </div>
-<div id="start">Click to play<br><br>WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and armor. Q: drop an item<br>Keys 1-9 or mouse wheel: pick an item</div>
+<div id="start">Click to play<br><br>WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and armor. Q: drop an item<br>Keys 1-9 or mouse wheel: pick a slot (9 slots, 64 per stack)<br>Hold Shift: sprint. Hold Down arrow: crouch</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+// If something goes wrong, show the error on screen instead of failing silently
+window.addEventListener('error', function (e) {
+  var d = document.getElementById('start');
+  if (d) { d.style.display = 'flex'; d.textContent = 'Game error: ' + e.message + ' (line ' + e.lineno + ')'; }
+});
+
 // ================= Settings =================
 const CH = 16, HEIGHT = 64, SEA = 22, RENDER = 5, SEED = 1337;
 const WATER = 5;
@@ -271,9 +277,9 @@ const ITEMS = {
   100:{n:'Stick',k:'stick',dc:0x9a7a4a},
   103:{n:'Raw Beef',e:'\uD83E\uDD69',dc:0xc0394a}, 104:{n:'Raw Porkchop',e:'\uD83E\uDD53',dc:0xf0a0a8},
   105:{n:'Raw Mutton',e:'\uD83C\uDF56',dc:0xd9768a}, 106:{n:'Raw Chicken',e:'\uD83C\uDF57',dc:0xf0d0c0},
-  107:{n:'Feather',e:'\uD83E\uDEB6',dc:0xffffff}, 108:{n:'Leather',c:0x9a5a2a},
+  107:{n:'Feather',e:'\uD83E\uDEB6',dc:0xffffff}, 108:{n:'Leather',k:'leather',dc:0x9a5a2a},
   111:{n:'Iron Ingot',k:'ingot',kc:'#d8d8d8',dc:0xd8d8d8},
-  112:{n:'Raw Fish',e:'\uD83D\uDC1F',dc:0xe08040}, 113:{n:'Turtle Scute',c:0x3d7a3a},
+  112:{n:'Raw Fish',e:'\uD83D\uDC1F',dc:0xe08040}, 113:{n:'Turtle Scute',k:'scute',dc:0x3d7a3a},
   114:{n:'Copper Ingot',k:'ingot',kc:'#d27a4a',dc:0xd27a4a},
   115:{n:'Gold Ingot',k:'ingot',kc:'#f2d23a',dc:0xf2d23a},
   116:{n:'Diamond',k:'gem',kc:'#4ee8e0',dc:0x4ee8e0},
@@ -590,53 +596,102 @@ function boxCollides(x, y, z, r, h) {
 }
 
 // ================= Inventory =================
-// Stackable items live in inv (id -> amount). Tools, armor, shears and rods are single items with their own durability, kept in gear.
-const inv = {};
-const gear = [];
+// 9 slots, like Minecraft. Stackable items hold up to 64. Tools, armor, shears and rods take one slot each and keep their own durability.
+const NSLOTS = 9, MAXSTACK = 64;
+const invSlots = new Array(NSLOTS).fill(null); // {id, n} for stacks, {id, g} for single items
 const equipped = { helmet: null, chest: null, legs: null, boots: null };
 let uidN = 1;
-let sel = null; // 's:ID' for a stack, 'g:UID' for a gear item
+let sel = 0;
 
-function count(id) { return inv[id] || 0; }
-function slots() {
-  const a = [];
-  Object.keys(inv).map(Number).sort((x, y) => x - y).forEach(id => a.push({ key: 's:' + id, id, count: inv[id] }));
-  gear.forEach(g => a.push({ key: 'g:' + g.uid, id: g.id, g }));
-  return a;
+function count(id) {
+  let t = 0;
+  for (const s of invSlots) if (s && !s.g && s.id === id) t += s.n;
+  return t;
 }
-function selGear() {
-  if (!sel || sel[0] !== 'g') return null;
-  const u = Number(sel.slice(2));
-  for (const g of gear) if (g.uid === u) return g;
-  return null;
+function selGear() { const s = invSlots[sel]; return s && s.g ? s.g : null; }
+function selId() { const s = invSlots[sel]; return s ? s.id : 0; }
+function roomFor(id) {
+  let r = 0;
+  for (const s of invSlots) {
+    if (!s) r += isGear(id) ? 1 : MAXSTACK;
+    else if (!isGear(id) && !s.g && s.id === id) r += MAXSTACK - s.n;
+  }
+  return r;
 }
-function selId() {
-  if (!sel) return 0;
-  if (sel[0] === 's') return Number(sel.slice(2));
-  const g = selGear();
-  return g ? g.id : 0;
-}
-function fixSel() {
-  if (sel && sel[0] === 's' && inv[Number(sel.slice(2))]) return;
-  if (selGear()) return;
-  const s = slots();
-  sel = s.length ? s[0].key : null;
-}
+// returns how many did NOT fit
 function add(id, n) {
-  if (isGear(id)) { for (let i = 0; i < n; i++) gear.push({ uid: uidN++, id, dur: maxDur(id) }); }
-  else inv[id] = count(id) + n;
+  if (isGear(id)) {
+    while (n > 0) {
+      const i = invSlots.indexOf(null);
+      if (i < 0) break;
+      invSlots[i] = { id, g: { uid: uidN++, id, dur: maxDur(id) } };
+      n--;
+    }
+  } else {
+    for (const s of invSlots) {
+      if (n <= 0) break;
+      if (s && !s.g && s.id === id && s.n < MAXSTACK) {
+        const t = Math.min(n, MAXSTACK - s.n);
+        s.n += t; n -= t;
+      }
+    }
+    while (n > 0) {
+      const i = invSlots.indexOf(null);
+      if (i < 0) break;
+      const t = Math.min(n, MAXSTACK);
+      invSlots[i] = { id, n: t };
+      n -= t;
+    }
+  }
+  refreshUI();
+  return n;
+}
+function addGearObj(g) {
+  const i = invSlots.indexOf(null);
+  if (i < 0) return false;
+  invSlots[i] = { id: g.id, g };
+  refreshUI();
+  return true;
+}
+function take(id, n) {
+  for (let i = NSLOTS - 1; i >= 0 && n > 0; i--) {
+    const s = invSlots[i];
+    if (s && !s.g && s.id === id) {
+      const t = Math.min(n, s.n);
+      s.n -= t; n -= t;
+      if (s.n <= 0) invSlots[i] = null;
+    }
+  }
   refreshUI();
 }
-function take(id, n) { inv[id] = count(id) - n; if (inv[id] <= 0) delete inv[id]; refreshUI(); }
 function wearSel(n) {
   const g = selGear();
   if (!g) return;
   g.dur -= n;
   if (g.dur <= 0) {
-    gear.splice(gear.indexOf(g), 1);
+    invSlots[sel] = null;
     toast('Your ' + ITEMS[g.id].n + ' broke!');
   }
   refreshUI();
+}
+// anything that doesn't fit in your inventory drops at your feet
+function dropExtra(id, n) {
+  for (let i = 0; i < n; i++) {
+    const o = { vx: (Math.random() - 0.5) * 2, vy: 2.5, vz: (Math.random() - 0.5) * 2, delay: 1.6 };
+    if (isGear(id)) o.g = { uid: uidN++, id, dur: maxDur(id) };
+    dropItem(id, p.x, p.y + 1, p.z, o);
+  }
+}
+function giveItem(id, n) {
+  const left = add(id, n);
+  if (left > 0) { dropExtra(id, left); toast('Inventory full. The rest dropped at your feet.'); }
+}
+function giveGear(id, dur) {
+  const g = { uid: uidN++, id, dur };
+  if (!addGearObj(g)) {
+    dropItem(id, p.x, p.y + 1, p.z, { g, vy: 2.5, vx: 0, vz: 0, delay: 1.6 });
+    toast('Inventory full. It dropped at your feet.');
+  }
 }
 
 // armor
@@ -645,18 +700,21 @@ function armorPoints() {
   for (const k in equipped) if (equipped[k]) t += ARMOR[equipped[k].id].pts;
   return t;
 }
-function equipGear(g) {
-  const def = ARMOR[g.id];
-  if (!def) return;
-  gear.splice(gear.indexOf(g), 1);
+function equipSlot(i) {
+  const s = invSlots[i];
+  if (!s || !s.g || !ARMOR[s.id]) return;
+  const def = ARMOR[s.id];
   const prev = equipped[def.slot];
-  if (prev) gear.push(prev);
-  equipped[def.slot] = g;
+  equipped[def.slot] = s.g;
+  invSlots[i] = prev ? { id: prev.id, g: prev } : null;
   refreshUI(); refreshStats();
 }
 function unequip(slot) {
   if (!equipped[slot]) return;
-  gear.push(equipped[slot]);
+  const i = invSlots.indexOf(null);
+  if (i < 0) { toast('Inventory full.'); return; }
+  const g = equipped[slot];
+  invSlots[i] = { id: g.id, g };
   equipped[slot] = null;
   refreshUI(); refreshStats();
 }
@@ -706,7 +764,7 @@ function craft(r) {
       if (left <= 0) break;
     }
   }
-  add(r.out, r.q);
+  giveItem(r.out, r.q);
 }
 
 // ================= UI =================
@@ -766,6 +824,28 @@ function drawKind(cx, k, col) {
     for (let y = 3; y < 12; y++) P(13, y, '#eeeeee');
     P(12, 3, '#eeeeee'); P(13, 12, '#c04040');
   }
+  else if (k === 'leather') {
+    const base = '#9a5a2a', edge = '#5e3515', hi = '#bd7c44', patch = '#84491f', stitch = '#ead6a6';
+    R(4, 2, 8, 1, edge); R(4, 13, 8, 1, edge); R(2, 4, 1, 8, edge); R(13, 4, 1, 8, edge);
+    P(3, 3, edge); P(12, 3, edge); P(3, 12, edge); P(12, 12, edge);
+    R(4, 3, 8, 10, base); R(3, 4, 10, 8, base);
+    R(3, 9, 4, 3, patch); R(9, 4, 3, 3, patch); R(8, 9, 2, 2, patch);
+    R(4, 3, 5, 1, hi); R(3, 4, 1, 4, hi); R(10, 7, 2, 1, hi);
+    for (let i = 0; i < 4; i++) P(5 + i * 2, 11, stitch);
+    for (let i = 0; i < 3; i++) P(4, 5 + i * 2, stitch);
+    for (let i = 0; i < 4; i++) P(6 + i, 6 + i, '#7a4318');
+  }
+  else if (k === 'scute') {
+    const base = '#3d7a3a', edge = '#1f4a22', line = '#255c2a', hi = '#7cc46a', mid = '#58a050';
+    const rows = [[6, 9], [4, 11], [3, 12], [2, 13], [2, 13], [2, 13], [2, 13], [2, 13], [2, 13], [3, 12], [4, 11], [6, 9]];
+    rows.forEach((r, i) => { R(r[0], 2 + i, r[1] - r[0] + 1, 1, base); P(r[0], 2 + i, edge); P(r[1], 2 + i, edge); });
+    R(6, 2, 4, 1, edge); R(6, 13, 4, 1, edge);
+    R(6, 5, 4, 1, line); R(6, 10, 4, 1, line);
+    P(5, 6, line); P(10, 6, line); P(4, 7, line); P(11, 7, line); P(4, 8, line); P(11, 8, line); P(5, 9, line); P(10, 9, line);
+    R(7, 7, 2, 2, mid);
+    P(7, 6, hi); P(8, 6, hi); P(6, 7, hi);
+    P(4, 4, hi); P(5, 3, hi);
+  }
   else if (k === 'helmet') { R(3, 4, 10, 3, col); R(3, 7, 3, 5, col); R(10, 7, 3, 5, col); R(3, 4, 10, 1, lite); }
   else if (k === 'chest') { R(2, 3, 12, 4, col); R(4, 7, 8, 7, col); R(2, 3, 12, 1, lite); R(4, 13, 8, 1, dark); }
   else if (k === 'legs') { R(4, 3, 8, 3, col); R(4, 6, 3, 8, col); R(9, 6, 3, 8, col); R(4, 3, 8, 1, lite); }
@@ -786,15 +866,16 @@ function icon(id) {
   return d;
 }
 function refreshUI() {
-  fixSel();
   hotbarEl.innerHTML = '';
-  slots().forEach((s, i) => {
+  for (let i = 0; i < NSLOTS; i++) {
+    const s = invSlots[i];
     const el = document.createElement('div');
-    el.className = 'slot' + (s.key === sel ? ' sel' : '');
-    el.appendChild(icon(s.id));
-    if (i < 9) { const nm = document.createElement('span'); nm.className = 'num'; nm.textContent = i + 1; el.appendChild(nm); }
-    if (s.count) { const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = s.count; el.appendChild(ct); }
-    else if (s.g) {
+    el.className = 'slot' + (i === sel ? ' sel' : '');
+    if (s) el.appendChild(icon(s.id));
+    const nm = document.createElement('span'); nm.className = 'num'; nm.textContent = i + 1; el.appendChild(nm);
+    if (s && !s.g && s.n > 1) {
+      const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = s.n; el.appendChild(ct);
+    } else if (s && s.g) {
       const mx = maxDur(s.id);
       if (s.g.dur < mx) {
         const f = s.g.dur / mx;
@@ -806,7 +887,7 @@ function refreshUI() {
       }
     }
     hotbarEl.appendChild(el);
-  });
+  }
   if (panelOpen) renderPanel();
 }
 function mkRow(iconNode, text, sub, buttons) {
@@ -841,18 +922,18 @@ function renderPanel() {
       invList.appendChild(mkRow(null, sl[1] + ': empty', '', []));
     }
   });
-  const ih = document.createElement('div'); ih.className = 'sub'; ih.textContent = 'Items';
+  const ih = document.createElement('div'); ih.className = 'sub'; ih.textContent = 'Your 9 slots';
   invList.appendChild(ih);
-  const all = slots();
-  if (!all.length) invList.appendChild(document.createTextNode('Empty. Punch a tree to get logs!'));
-  all.forEach(s => {
-    const btns = [];
-    if (s.g && ARMOR[s.id]) btns.push(mkBtn('Equip', 'eq', () => equipGear(s.g)));
-    btns.push(mkBtn('Drop', 'drop', () => dropSlot(s.key)));
-    const label = ITEMS[s.id].n + (s.count ? '  x' + s.count : '');
+  for (let i = 0; i < NSLOTS; i++) {
+    const s = invSlots[i];
+    if (!s) { invList.appendChild(mkRow(null, (i + 1) + '.  empty', '', [])); continue; }
+    const btns = [mkBtn(i === sel ? 'Holding' : 'Hold', 'eq', () => { sel = i; refreshUI(); }, i === sel)];
+    if (s.g && ARMOR[s.id]) btns.push(mkBtn('Equip', 'eq', () => equipSlot(i)));
+    btns.push(mkBtn('Drop', 'drop', () => dropSlot(i)));
+    const label = (i + 1) + '.  ' + ITEMS[s.id].n + (s.g ? '' : '  x' + s.n);
     const sub = s.g ? 'Durability ' + s.g.dur + '/' + maxDur(s.id) : '';
     invList.appendChild(mkRow(icon(s.id), label, sub, btns));
-  });
+  }
   recipesEl.innerHTML = '';
   for (const r of RECIPES) {
     const blocked = r.table && panelMode !== 'table';
@@ -907,7 +988,7 @@ function die() {
   refreshStats();
 }
 function updateSurvival(dt) {
-  hungerT += dt * (moving ? 1.5 : 1);
+  hungerT += dt * (sprinting ? 2.5 : (moving ? 1.5 : 1));
   if (hungerT >= 22) { hungerT = 0; if (hunger > 0) { hunger--; refreshStats(); } }
   if (hunger >= 18 && health < 20) {
     regenT += dt;
@@ -928,24 +1009,38 @@ function eat(id) {
 // ================= Player =================
 const p = { x: 0, y: 40, z: 0 };
 let vy = 0, onGround = false, yaw = 0, pitch = 0;
+let crouching = false, sprinting = false, playerH = 1.8, eyeH = 1.6;
 const keys = {};
+
+// is there floor under this spot? (used so crouching keeps you from walking off edges)
+function groundBelow(x, y, z) { return boxCollides(x, y - 0.5, z, 0.3, 0.45); }
 
 function update(dt) {
   const feetW = getBlock(Math.floor(p.x), Math.floor(p.y + 0.4), Math.floor(p.z)) === WATER;
+
+  // crouch with the Down arrow; you stay crouched while there's no room to stand up
+  const wantCrouch = !!keys.ArrowDown && !feetW;
+  if (wantCrouch) crouching = true;
+  else if (crouching && !boxCollides(p.x, p.y, p.z, 0.3, 1.8)) crouching = false;
+  playerH = crouching ? 1.5 : 1.8;
+
   const headOut = getBlock(Math.floor(p.x), Math.floor(p.y + 1.6), Math.floor(p.z)) !== WATER;
   const fwd = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
   moving = fwd !== 0 || strafe !== 0;
+  // hold Shift while moving forward to sprint (walking or swimming)
+  sprinting = !!(keys.ShiftLeft || keys.ShiftRight) && fwd > 0 && !crouching;
   const len = Math.hypot(fwd, strafe) || 1;
-  const speed = feetW ? 2.8 : 5;
+  const speed = feetW ? (sprinting ? 4.4 : 2.8) : (crouching ? 1.6 : (sprinting ? 7.5 : 5));
   const vx = (-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe) / len * speed;
   const vz = (-Math.cos(yaw) * fwd - Math.sin(yaw) * strafe) / len * speed;
 
+  const guard = crouching && onGround;
   let bx = false, bz = false;
   const nx = p.x + vx * dt;
-  if (!boxCollides(nx, p.y, p.z, 0.3, 1.8)) p.x = nx; else bx = true;
+  if (!boxCollides(nx, p.y, p.z, 0.3, playerH) && !(guard && !groundBelow(nx, p.y, p.z))) p.x = nx; else bx = true;
   const nz = p.z + vz * dt;
-  if (!boxCollides(p.x, p.y, nz, 0.3, 1.8)) p.z = nz; else bz = true;
+  if (!boxCollides(p.x, p.y, nz, 0.3, playerH) && !(guard && !groundBelow(p.x, p.y, nz))) p.z = nz; else bz = true;
 
   if (feetW) {
     vy -= 10 * dt;
@@ -954,7 +1049,7 @@ function update(dt) {
     // climbing out: pushed against a bank, either holding Space or with your head above water
     if ((bx || bz) && (keys.Space || headOut)) {
       const ax = p.x + (bx ? Math.sign(vx) * 0.5 : 0), az = p.z + (bz ? Math.sign(vz) * 0.5 : 0);
-      if (!boxCollides(ax, p.y + 1.4, az, 0.3, 1.8)) vy = 9;
+      if (!boxCollides(ax, p.y + 1.4, az, 0.3, playerH)) vy = 9;
     }
   } else {
     if (keys.Space && onGround) { vy = 8; onGround = false; }
@@ -962,7 +1057,7 @@ function update(dt) {
   }
   vy = Math.max(vy, -20);
   let ny = p.y + vy * dt;
-  if (boxCollides(p.x, ny, p.z, 0.3, 1.8)) {
+  if (boxCollides(p.x, ny, p.z, 0.3, playerH)) {
     if (vy < 0) { ny = Math.floor(ny) + 1; onGround = true; }
     else ny = p.y;
     vy = 0;
@@ -977,10 +1072,11 @@ function update(dt) {
   } else if (feetW) fallPeak = null;
   else if (fallPeak === null || p.y > fallPeak) fallPeak = p.y;
 
-  camera.position.set(p.x, p.y + 1.6, p.z);
+  eyeH += ((crouching ? 1.3 : 1.6) - eyeH) * Math.min(1, dt * 14);
+  camera.position.set(p.x, p.y + eyeH, p.z);
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
-  waterEl.style.display = getBlock(Math.floor(p.x), Math.floor(p.y + 1.6), Math.floor(p.z)) === WATER ? 'block' : 'none';
+  waterEl.style.display = getBlock(Math.floor(p.x), Math.floor(p.y + eyeH), Math.floor(p.z)) === WATER ? 'block' : 'none';
 }
 
 // ================= Mobs =================
@@ -1288,13 +1384,34 @@ function mobAtRay(maxd) {
 }
 
 // ================= Dropped items =================
+// Each drop shows the item's own picture (drawn from the same art as the inventory icon)
 const drops = [];
-const dropGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
+const dropPlane = new THREE.PlaneGeometry(0.45, 0.45);
+const dropMats = {};
+let fullToastAt = 0;
+function itemMat(id) {
+  if (dropMats[id]) return dropMats[id];
+  const it = ITEMS[id];
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = false;
+  if (it.t !== undefined) cx.drawImage(atlas, (it.t % AT) * TS, Math.floor(it.t / AT) * TS, TS, TS, 0, 0, 32, 32);
+  else if (it.k) { cx.scale(2, 2); drawKind(cx, it.k, it.kc); }
+  else if (it.e) { cx.font = '26px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(it.e, 16, 17); }
+  else { cx.fillStyle = '#' + (it.c || 0xffffff).toString(16).padStart(6, '0'); cx.fillRect(4, 4, 24, 24); }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
+  dropMats[id] = mat;
+  return mat;
+}
 function dropItem(id, x, y, z, o) {
   o = o || {};
   if (drops.length > 250) removeDrop(0);
-  const it = ITEMS[id];
-  const mesh = new THREE.Mesh(dropGeo, new THREE.MeshBasicMaterial({ color: it.dc || it.c || 0xffffff }));
+  const mesh = new THREE.Mesh(dropPlane, itemMat(id));
   mesh.position.set(x, y, z);
   scene.add(mesh);
   drops.push({
@@ -1304,30 +1421,28 @@ function dropItem(id, x, y, z, o) {
     vz: o.vz !== undefined ? o.vz : (Math.random() - 0.5) * 2.5
   });
 }
-function dropSlot(key) {
+// throw the item in the given slot (one at a time, or a whole tool)
+function dropSlot(i) {
+  const s = invSlots[i];
+  if (!s) return;
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   const px = p.x + dir.x * 0.7, py = p.y + 1.4, pz = p.z + dir.z * 0.7;
   const o = { vx: dir.x * 4, vy: 2.5, vz: dir.z * 4, delay: 1.6 };
-  if (key[0] === 's') {
-    const id = Number(key.slice(2));
-    if (!count(id)) return;
-    dropItem(id, px, py, pz, o);
-    take(id, 1);
+  if (s.g) {
+    o.g = s.g;
+    invSlots[i] = null;
+    dropItem(s.id, px, py, pz, o);
   } else {
-    const u = Number(key.slice(2));
-    const i = gear.findIndex(g => g.uid === u);
-    if (i < 0) return;
-    const g = gear.splice(i, 1)[0];
-    o.g = g;
-    dropItem(g.id, px, py, pz, o);
-    refreshUI();
+    dropItem(s.id, px, py, pz, o);
+    s.n--;
+    if (s.n <= 0) invSlots[i] = null;
   }
+  refreshUI();
 }
 function removeDrop(i) {
   const d = drops[i];
   scene.remove(d.mesh);
-  d.mesh.material.dispose();
   drops.splice(i, 1);
 }
 function updateDrops(dt) {
@@ -1351,18 +1466,24 @@ function updateDrops(dt) {
     }
     const ny = d.y + d.vy * dt;
     let resting = false;
-    if (solid(getBlock(Math.floor(d.x), Math.floor(ny - 0.14), Math.floor(d.z)))) {
-      d.y = Math.floor(ny - 0.14) + 1 + 0.14;
+    if (solid(getBlock(Math.floor(d.x), Math.floor(ny - 0.22), Math.floor(d.z)))) {
+      d.y = Math.floor(ny - 0.22) + 1 + 0.22;
       d.vy = 0; resting = true;
     } else d.y = ny;
     const bob = resting ? Math.sin(d.age * 3) * 0.05 + 0.05 : 0;
     d.mesh.position.set(d.x, d.y + bob, d.z);
     d.mesh.rotation.y = d.age * 2;
     if (d.age > d.delay && Math.hypot(d.x - p.x, d.z - p.z) < 1.7 && Math.abs(d.y - (p.y + 0.9)) < 1.7) {
-      if (d.g) { gear.push(d.g); refreshUI(); }
-      else add(d.id, 1);
-      toast('+1 ' + ITEMS[d.id].n);
-      removeDrop(i);
+      let ok = false;
+      if (d.g) ok = addGearObj(d.g);
+      else if (roomFor(d.id) >= 1) { add(d.id, 1); ok = true; }
+      if (ok) {
+        toast('+1 ' + ITEMS[d.id].n);
+        removeDrop(i);
+      } else if (performance.now() - fullToastAt > 1500) {
+        fullToastAt = performance.now();
+        toast('Inventory full.');
+      }
     }
   }
 }
@@ -1403,15 +1524,14 @@ function castOrReel() {
 }
 function catchFish() {
   const r = Math.random();
-  if (r < 0.65) { add(112, 1); toast('You caught a fish!'); }
+  if (r < 0.65) { giveItem(112, 1); toast('You caught a fish!'); }
   else if (r < 0.9) {
     const id = FISH_TOOLS[Math.floor(Math.random() * FISH_TOOLS.length)];
     const dur = Math.max(1, Math.floor(maxDur(id) * (0.25 + Math.random() * 0.5)));
-    gear.push({ uid: uidN++, id, dur });
+    giveGear(id, dur);
     toast('You caught a ' + ITEMS[id].n + '!');
-    refreshUI();
   }
-  else { add(118, 1); toast('You caught some string.'); }
+  else { giveItem(118, 1); toast('You caught some string.'); }
   wearSel(1);
 }
 function updateFishing(dt) {
@@ -1472,11 +1592,11 @@ function placeBlock(r) {
   const cur = getBlock(t[0], t[1], t[2]);
   if (cur !== 0 && cur !== WATER) return;
   const overX = p.x - 0.3 < t[0] + 1 && p.x + 0.3 > t[0] && p.z - 0.3 < t[2] + 1 && p.z + 0.3 > t[2];
-  const overY = p.y < t[1] + 1 && p.y + 1.8 > t[1];
+  const overY = p.y < t[1] + 1 && p.y + playerH > t[1];
   let lift = false;
   if (overX && overY) {
     // In the air with the block under your feet: place it and land on top (pillar jumping)
-    if (!onGround && p.y >= t[1] - 0.01 && !boxCollides(p.x, t[1] + 1, p.z, 0.3, 1.8)) lift = true;
+    if (!onGround && p.y >= t[1] - 0.01 && !boxCollides(p.x, t[1] + 1, p.z, 0.3, playerH)) lift = true;
     else return;
   }
   setBlock(t[0], t[1], t[2], id);
@@ -1573,30 +1693,25 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ================= Controls =================
 addEventListener('keydown', (e) => {
+  if (e.code === 'ArrowDown' || e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyE') {
     if (panelOpen) closePanel(true);
     else if (locked()) openPanel('inv');
     return;
   }
-  if (e.code === 'KeyQ') { if (locked() && sel) dropSlot(sel); return; }
+  if (e.code === 'KeyQ') { if (locked()) dropSlot(sel); return; }
   if (e.code === 'Escape') { if (panelOpen) closePanel(false); return; }
   keys[e.code] = true;
   if (e.code.startsWith('Digit')) {
     const n = Number(e.code.slice(5));
-    const s = slots();
-    if (n >= 1 && n <= 9 && s[n - 1]) { sel = s[n - 1].key; refreshUI(); }
+    if (n >= 1 && n <= NSLOTS) { sel = n - 1; refreshUI(); }
   }
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 addEventListener('wheel', (e) => {
   if (!locked()) return;
-  const s = slots();
-  if (!s.length) return;
-  let i = s.findIndex(x => x.key === sel);
-  if (i < 0) i = 0;
-  i = (i + (e.deltaY > 0 ? 1 : -1) + s.length) % s.length;
-  sel = s[i].key;
+  sel = (sel + (e.deltaY > 0 ? 1 : -1) + NSLOTS) % NSLOTS;
   refreshUI();
 });
 startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());
