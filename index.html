@@ -1109,7 +1109,8 @@ function hurt(n) {
   if (health <= 0) die();
 }
 let biteToastAt = 0;
-function mobBite(dmg) {
+function mobBite(dmg, attacker) {
+  if (attacker) petsTarget(attacker);
   const red = Math.min(0.8, armorPoints() * 0.04);
   const fin = Math.max(1, Math.round(dmg * (1 - red)));
   wearArmor();
@@ -1371,6 +1372,10 @@ function addDetails(type, s, g, mk, hy, hz) {
     // bushy tail pointing up and back
     part(0.12, 0.12, 0.4, 0x9a9a9a, 0, s.legH + s.bh * 0.9, -s.bl / 2 - 0.1, 0, 0.7);
     part(0.11, 0.11, 0.1, 0xdcdcdc, 0, s.legH + s.bh * 0.9 + 0.14, -s.bl / 2 - 0.27, 0, 0.7);
+    // red collar, only shown once the wolf is tamed
+    const collar = part(hs * 1.08, 0.07, 0.12, 0xd02020, 0, hy - hs * 0.4, hz - hs * 0.42);
+    collar.visible = false;
+    wool.push(collar);
   }
   return wool;
 }
@@ -1454,7 +1459,8 @@ function spawnMob(type, x, y, z) {
     type, spec: s, group: g, x, y, z, vy: 0, vv: 0, rot: Math.random() * Math.PI * 2, hp: s.hp,
     timer: Math.random() * 3, moving: false, onGround: false, panic: 0, flash: 0, kx: 0, kz: 0,
     pivots, signs: s.fish ? [1] : (s.legs === 4 ? [1, -1, -1, 1] : [1, -1]), mats, walkT: 0,
-    h: mh, dying: false, dyingT: 0, sheared: false, regrow: 0, wool, biteCd: 0, aggro: 0, chasing: false
+    h: mh, dying: false, dyingT: 0, sheared: false, regrow: 0, wool, biteCd: 0, aggro: 0, chasing: false,
+    eaten: 0, calm: 0, tamed: false, target: null, targetT: 0, fallPeak: null
   });
 }
 function removeMob(m) {
@@ -1482,7 +1488,7 @@ function trySpawnMobs(c) {
     }
   }
   // wolf packs on grass, never right next to the player
-  if (countMobs(['wolf']) < 8 && Math.random() < 0.18) {
+  if (mobs.filter(m => m.type === 'wolf' && !m.tamed).length < 8 && Math.random() < 0.18) {
     const n = 2 + Math.floor(Math.random() * 2);
     const bx = Math.floor(Math.random() * CH), bz = Math.floor(Math.random() * CH);
     for (let i = 0; i < n; i++) {
@@ -1518,6 +1524,49 @@ function trySpawnMobs(c) {
       spawnMob('turtle', c.cx * CH + lx + 0.5, ht + 1, c.cz * CH + lz + 0.5);
     }
   }
+}
+// little floating hearts when a wolf becomes your pet
+const particles = [];
+const heartPlane = new THREE.PlaneGeometry(0.5, 0.5);
+let heartMat = null;
+function spawnHearts(x, y, z) {
+  if (!heartMat) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 16;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#e02030';
+    ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'].forEach((row, yy) => {
+      for (let xx = 0; xx < 7; xx++) if (row[xx] === 'X') cx.fillRect(4 + xx, 4 + yy, 1, 1);
+    });
+    cx.fillStyle = '#ff9aa6';
+    cx.fillRect(5, 5, 1, 1);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    heartMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, depthWrite: false });
+  }
+  for (let i = 0; i < 6; i++) {
+    const mesh = new THREE.Mesh(heartPlane, heartMat);
+    mesh.position.set(x + (Math.random() - 0.5) * 0.9, y + Math.random() * 0.5, z + (Math.random() - 0.5) * 0.9);
+    scene.add(mesh);
+    particles.push({ mesh, vy: 0.9 + Math.random() * 0.6, age: 0, life: 1.4 + Math.random() * 0.5 });
+  }
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const q = particles[i];
+    q.age += dt;
+    q.mesh.position.y += q.vy * dt;
+    q.mesh.rotation.y = yaw;
+    q.mesh.scale.setScalar(Math.max(0.05, 1 - q.age / q.life * 0.6));
+    if (q.age >= q.life) { scene.remove(q.mesh); particles.splice(i, 1); }
+  }
+}
+function mobFallDamage(m, dmg) {
+  m.hp -= dmg;
+  m.flash = 0.25;
+  if (m.hp <= 0) startDeath(m);
 }
 function tickFlash(m, dt) {
   if (m.flash > 0) {
@@ -1563,6 +1612,118 @@ function updateFish(m, dt) {
   m.group.rotation.y = m.rot;
   tickFlash(m, dt);
 }
+// ================= Wolves: taming, pets and fighting =================
+const MEAT = { 103: 1, 104: 1, 105: 1, 106: 1 }; // raw beef, porkchop, mutton and chicken
+// an open spot on the ground a few blocks from a position (used to place and call back pets)
+function groundSpotNear(cx, cy, cz) {
+  for (let r = 2; r <= 5; r++) {
+    for (let a = 0; a < 8; a++) {
+      const ang = a * Math.PI / 4 + r;
+      const x = Math.floor(cx + Math.cos(ang) * r), z = Math.floor(cz + Math.sin(ang) * r);
+      for (let y = Math.floor(cy) + 2; y >= Math.floor(cy) - 4; y--) {
+        if (solid(getBlock(x, y, z)) && getBlock(x, y + 1, z) === 0 && getBlock(x, y + 2, z) === 0 && getBlock(x, y + 3, z) === 0) {
+          return [x + 0.5, y + 1, z + 0.5];
+        }
+      }
+    }
+  }
+  return null;
+}
+function restorePets(list) {
+  if (!list) return;
+  list.forEach(pt => {
+    const sp = groundSpotNear(p.x, p.y, p.z);
+    if (!sp) return;
+    spawnMob('wolf', sp[0], sp[1], sp[2]);
+    const w = mobs[mobs.length - 1];
+    w.tamed = true;
+    w.hp = Math.max(1, pt.hp || 10);
+    w.wool.forEach(x => { x.visible = true; });
+  });
+}
+function meatNear(m, r) {
+  let best = null, bd = r;
+  for (const d of drops) {
+    if (!MEAT[d.id]) continue;
+    const dd = Math.hypot(d.x - m.x, d.z - m.z);
+    if (dd < bd && Math.abs(d.y - m.y) < 3) { bd = dd; best = d; }
+  }
+  return best;
+}
+function tameWolf(m) {
+  m.tamed = true; m.aggro = 0; m.target = null; m.eaten = 0;
+  m.wool.forEach(w => { w.visible = true; }); // the red collar
+  spawnHearts(m.x, m.y + 0.9, m.z);
+  toast('The wolf is now your pet!');
+}
+// pets go after whatever you attack, or whatever attacks you
+function petsTarget(tg) {
+  if (!tg || tg.tamed || tg.dying) return;
+  for (const m of mobs) if (m.tamed && !m.dying) { m.target = tg; m.targetT = 15; }
+}
+function petBite(pet, tg, dmg) {
+  tg.hp -= dmg;
+  const ax = tg.x - pet.x, az = tg.z - pet.z, l = Math.hypot(ax, az) || 1;
+  tg.kx = ax / l * 5; tg.kz = az / l * 5; tg.vy = 4; tg.onGround = false; tg.flash = 0.25;
+  if (!tg.spec.hostile) tg.panic = 3;
+  if (tg.hp <= 0) startDeath(tg);
+}
+function teleportPet(m) {
+  const sp = groundSpotNear(p.x, p.y, p.z);
+  if (!sp) return;
+  m.x = sp[0]; m.y = sp[1]; m.z = sp[2];
+  m.vy = 0; m.fallPeak = null; m.kx = 0; m.kz = 0;
+}
+function petAI(m, dt, s, dxp, dzp, dp) {
+  if (m.target && (m.target.dying || mobs.indexOf(m.target) < 0 || m.targetT <= 0)) m.target = null;
+  if (m.target) {
+    m.targetT -= dt;
+    const tg = m.target, tx = tg.x - m.x, tz = tg.z - m.z, td = Math.hypot(tx, tz);
+    if (td > 30) m.target = null;
+    else {
+      m.chasing = true;
+      m.rot = Math.atan2(tx, tz);
+      m.moving = td > 1.3;
+      if (td < 1.8 && Math.abs(tg.y - m.y) < 1.8 && m.biteCd <= 0) { m.biteCd = 1; petBite(m, tg, s.dmg); }
+      return;
+    }
+  }
+  if (dp > 22) { teleportPet(m); return; } // too far behind: join you
+  if (dp > 5) { m.chasing = true; m.rot = Math.atan2(dxp, dzp); m.moving = true; }
+}
+function wolfAI(m, dt, s) {
+  m.biteCd = Math.max(0, m.biteCd - dt);
+  const dxp = p.x - m.x, dzp = p.z - m.z, dp = Math.hypot(dxp, dzp);
+  if (m.tamed) { petAI(m, dt, s, dxp, dzp, dp); return; }
+  // a wild wolf that smells dropped meat calms down and runs to eat it; three pieces win it over
+  const meat = meatNear(m, 7);
+  if (meat) {
+    m.calm = 12; m.aggro = 0;
+    const mx = meat.x - m.x, mz = meat.z - m.z, md = Math.hypot(mx, mz);
+    m.chasing = true;
+    m.rot = Math.atan2(mx, mz);
+    m.moving = md > 0.9;
+    if (md < 1.3) {
+      removeDrop(drops.indexOf(meat));
+      m.eaten++;
+      if (m.eaten >= 3) tameWolf(m);
+      else toast('The wolf gulps it down. Give it ' + (3 - m.eaten) + ' more.');
+    }
+    return;
+  }
+  m.calm = Math.max(0, m.calm - dt);
+  if (m.calm <= 0) m.eaten = 0;
+  if (!WOLF_ATTACKS || m.calm > 0) return;
+  if (dp < WOLF_AGGRO && Math.abs(p.y - m.y) < 3) m.aggro = 6;
+  else if (m.aggro > 0) m.aggro -= dt;
+  if (m.aggro > 0) {
+    m.chasing = true;
+    m.rot = Math.atan2(dxp, dzp);
+    m.moving = dp > 1.2;
+    if (dp < 1.7 && Math.abs(p.y - m.y) < 1.6 && m.biteCd <= 0) { m.biteCd = 1; mobBite(s.dmg, m); }
+  }
+}
+
 function updateMob(m, dt) {
   const s = m.spec;
 
@@ -1603,21 +1764,10 @@ function updateMob(m, dt) {
       m.rot = Math.random() * Math.PI * 2;
     }
   }
-  // wolves: chase and bite when you come close
+  // wolves: wild ones chase and bite, tamed ones follow you and fight for you
   m.chasing = false;
-  if (s.hostile && WOLF_ATTACKS) {
-    const dxp = p.x - m.x, dzp = p.z - m.z, dp = Math.hypot(dxp, dzp);
-    m.biteCd = Math.max(0, m.biteCd - dt);
-    if (dp < WOLF_AGGRO && Math.abs(p.y - m.y) < 3) m.aggro = 6;
-    else if (m.aggro > 0) m.aggro -= dt;
-    if (m.aggro > 0) {
-      m.chasing = true;
-      m.rot = Math.atan2(dxp, dzp);
-      m.moving = dp > 1.2;
-      if (dp < 1.7 && Math.abs(p.y - m.y) < 1.6 && m.biteCd <= 0) { m.biteCd = 1; mobBite(s.dmg); }
-    }
-  }
-  const spd = m.moving ? s.speed * (m.panic > 0 ? 2.6 : (m.chasing ? 3.4 : 1)) : 0;
+  if (s.hostile) wolfAI(m, dt, s);
+  const spd = m.moving ? s.speed * (m.panic > 0 ? 2.6 : (m.chasing ? (m.tamed ? 4.5 : 3.4) : 1)) : 0;
   const sx = Math.sin(m.rot), sz = Math.cos(m.rot);
   let dx = sx * spd * dt + m.kx * dt, dz = sz * spd * dt + m.kz * dt;
   m.kx *= Math.max(0, 1 - 6 * dt); m.kz *= Math.max(0, 1 - 6 * dt);
@@ -1650,6 +1800,15 @@ function updateMob(m, dt) {
   } else m.onGround = false;
   m.y = ny;
   if (m.y < -10) { removeMob(m); return; }
+  // animals take fall damage just like you do
+  if (inW) m.fallPeak = null;
+  else if (m.onGround) {
+    if (m.fallPeak !== null) {
+      const fd = Math.floor(m.fallPeak - m.y) - 3;
+      if (fd > 0) { mobFallDamage(m, fd); if (m.dying) return; }
+    }
+    m.fallPeak = null;
+  } else if (m.fallPeak === null || m.y > m.fallPeak) m.fallPeak = m.y;
 
   m.walkT += dt * (spd > 0 ? spd * 6 : 0);
   const sw = spd > 0 ? Math.sin(m.walkT) * 0.7 : 0;
@@ -1660,6 +1819,7 @@ function updateMob(m, dt) {
 }
 function startDeath(m) {
   m.dying = true; m.dyingT = 0; m.flash = 0;
+  if (m.tamed) toast('Your wolf died.');
   m.mats.forEach(o => o.m.color.set(0xff3030));
   const list = DROPS[m.type] || [];
   for (const d of list) {
@@ -1674,6 +1834,7 @@ function hitMob(m) {
   const g = selGear();
   const def = g ? TOOLS[g.id] : null;
   m.hp -= def ? def.dmg : 1;
+  if (!m.tamed) petsTarget(m); // your pets join any fight you start
   const ax = m.x - p.x, az = m.z - p.z, l = Math.hypot(ax, az) || 1;
   m.kx = ax / l * 6; m.kz = az / l * 6;
   m.vy = 5; m.onGround = false;
@@ -2376,7 +2537,8 @@ function saveWorld(manual) {
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: invSlots, equipped: equipped, edits: packEdits(), saplings: saplings
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: invSlots, equipped: equipped, edits: packEdits(), saplings: saplings,
+    pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp }))
   };
   if (writeWorld(rec)) {
     const list = loadIndex();
@@ -2404,6 +2566,8 @@ function resetWorldState() {
   panelOpen = false; panelEl.style.display = 'none';
   leftDown = false; mining = null; crack.visible = false;
   dead = false; deathEl.style.display = 'none'; saplings = [];
+  for (let i = particles.length - 1; i >= 0; i--) scene.remove(particles[i].mesh);
+  particles.length = 0;
   pad.playing = false; pad.sprint = false;
   document.body.style.cursor = '';
 }
@@ -2440,6 +2604,7 @@ function startWorld(rec) {
   for (const k in equipped) if (equipped[k] && equipped[k].uid >= uidN) uidN = equipped[k].uid + 1;
   const pcx = Math.floor(p.x / CH), pcz = Math.floor(p.z / CH);
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) buildChunk(pcx + dx, pcz + dz);
+  restorePets(rec.pets);
   camera.position.set(p.x, p.y + eyeH, p.z);
   camera.rotation.y = yaw; camera.rotation.x = pitch;
   refreshUI(); refreshStats();
@@ -2611,7 +2776,7 @@ function gameTick(dt) {
   if (frameNo % 60 === 0) {
     pruneChunks();
     for (let i = mobs.length - 1; i >= 0; i--) {
-      if (Math.hypot(mobs[i].x - p.x, mobs[i].z - p.z) > (RENDER + 0.5) * CH) removeMob(mobs[i]);
+      if (Math.hypot(mobs[i].x - p.x, mobs[i].z - p.z) > (RENDER + 0.5) * CH && !mobs[i].tamed) removeMob(mobs[i]);
     }
   }
   const r = raycastBlocks(6);
@@ -2619,6 +2784,7 @@ function gameTick(dt) {
   else wire.visible = false;
   updateDayNight(dt);
   updateSaplings(dt);
+  updateParticles(dt);
   saveTimer += dt;
   if (saveTimer > 15) { saveTimer = 0; saveWorld(false); }
 }
