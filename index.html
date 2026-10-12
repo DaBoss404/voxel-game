@@ -43,6 +43,7 @@
   .row .drop{background:#6a4a4a;padding:4px 8px;font-size:12px}
   .row .eq{background:#3a6a9a;padding:4px 8px;font-size:12px}
   .hint{color:#999;font-size:12px;margin:10px 0 0}
+  .padfocus{outline:3px solid #ffd54a;outline-offset:1px}
 </style>
 </head>
 <body>
@@ -65,7 +66,7 @@
   </div>
   <p class="hint">Press E or Esc to close</p>
 </div>
-<div id="start">Click to play<br><br>WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and armor. Q: drop an item<br>Keys 1-9 or mouse wheel: pick a slot (9 slots, 64 per stack)<br>Hold Shift: sprint. Hold Down arrow: crouch</div>
+<div id="start">Click to play<br><br>WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and armor. Q: drop an item<br>Keys 1-9 or mouse wheel: pick a slot (9 slots, 64 per stack)<br>Hold Shift: sprint. Hold Down arrow: crouch<br><br><span style="font-size:16px">Xbox controller: plug it in, press any button, then press A to start.<br>Left stick move, right stick look, A jump, B crouch, RT mine or attack, LT place or use, LB and RB change slot, X drop, Y inventory, click the left stick to sprint, Start to pause. In menus use the D-pad and A.</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // If something goes wrong, show the error on screen instead of failing silently
@@ -79,6 +80,8 @@ const CH = 16, HEIGHT = 64, SEA = 22, RENDER = 5, SEED = 1337;
 const WATER = 5;
 // Cave size: bigger CAVE_TUNNEL = wider tunnels. Smaller CAVE_ROOM = more and bigger chambers.
 const CAVE_TUNNEL = 0.08, CAVE_ROOM = 0.76;
+// Wolves: set WOLF_ATTACKS to false to make them harmless. WOLF_AGGRO is how close (in blocks) you can get before they attack.
+const WOLF_ATTACKS = true, WOLF_AGGRO = 5;
 
 // ================= Noise =================
 function hash2(x, z) {
@@ -943,6 +946,8 @@ function renderPanel() {
   }
 }
 function locked() { return document.pointerLockElement === renderer.domElement; }
+// true when the mouse has the game, or a controller is playing
+function active() { return locked() || pad.playing; }
 function openPanel(mode) {
   panelMode = mode; panelOpen = true;
   panelEl.style.display = 'block';
@@ -953,8 +958,8 @@ function openPanel(mode) {
 function closePanel(relock) {
   panelOpen = false;
   panelEl.style.display = 'none';
-  startEl.style.display = 'flex';
-  if (relock) renderer.domElement.requestPointerLock();
+  startEl.style.display = pad.playing ? 'none' : 'flex';
+  if (relock && !pad.playing) renderer.domElement.requestPointerLock();
 }
 
 // ================= Health, hunger, armor =================
@@ -971,9 +976,18 @@ function refreshStats() {
 function hurt(n) {
   health = Math.max(0, health - n);
   hurtEl.style.opacity = 1;
+  rumble(220, 0.7);
   setTimeout(() => { hurtEl.style.opacity = 0; }, 150);
   refreshStats();
   if (health <= 0) die();
+}
+let biteToastAt = 0;
+function mobBite(dmg) {
+  const red = Math.min(0.8, armorPoints() * 0.04);
+  const fin = Math.max(1, Math.round(dmg * (1 - red)));
+  wearArmor();
+  hurt(fin);
+  if (performance.now() - biteToastAt > 2500) { biteToastAt = performance.now(); toast('A wolf bit you!'); }
 }
 function fallHurt(dmg) {
   const red = Math.min(0.8, armorPoints() * 0.04);
@@ -1011,6 +1025,8 @@ const p = { x: 0, y: 40, z: 0 };
 let vy = 0, onGround = false, yaw = 0, pitch = 0;
 let crouching = false, sprinting = false, playerH = 1.8, eyeH = 1.6;
 const keys = {};
+// controller state, filled in by pollPad()
+const pad = { mx: 0, my: 0, jump: false, crouch: false, sprint: false, playing: false, connected: false };
 
 // is there floor under this spot? (used so crouching keeps you from walking off edges)
 function groundBelow(x, y, z) { return boxCollides(x, y - 0.5, z, 0.3, 0.45); }
@@ -1019,21 +1035,23 @@ function update(dt) {
   const feetW = getBlock(Math.floor(p.x), Math.floor(p.y + 0.4), Math.floor(p.z)) === WATER;
 
   // crouch with the Down arrow; you stay crouched while there's no room to stand up
-  const wantCrouch = !!keys.ArrowDown && !feetW;
+  const wantCrouch = (!!keys.ArrowDown || pad.crouch) && !feetW;
   if (wantCrouch) crouching = true;
   else if (crouching && !boxCollides(p.x, p.y, p.z, 0.3, 1.8)) crouching = false;
   playerH = crouching ? 1.5 : 1.8;
 
   const headOut = getBlock(Math.floor(p.x), Math.floor(p.y + 1.6), Math.floor(p.z)) !== WATER;
-  const fwd = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
-  const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+  const fwd = Math.max(-1, Math.min(1, (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) + pad.my));
+  const strafe = Math.max(-1, Math.min(1, (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + pad.mx));
   moving = fwd !== 0 || strafe !== 0;
-  // hold Shift while moving forward to sprint (walking or swimming)
-  sprinting = !!(keys.ShiftLeft || keys.ShiftRight) && fwd > 0 && !crouching;
+  // hold Shift (or click the left stick) while moving forward to sprint (walking or swimming)
+  sprinting = !!(keys.ShiftLeft || keys.ShiftRight || pad.sprint) && fwd > 0.3 && !crouching;
   const len = Math.hypot(fwd, strafe) || 1;
+  const mag = Math.min(1, len);
   const speed = feetW ? (sprinting ? 4.4 : 2.8) : (crouching ? 1.6 : (sprinting ? 7.5 : 5));
-  const vx = (-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe) / len * speed;
-  const vz = (-Math.cos(yaw) * fwd - Math.sin(yaw) * strafe) / len * speed;
+  const vx = (-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe) / len * speed * mag;
+  const vz = (-Math.cos(yaw) * fwd - Math.sin(yaw) * strafe) / len * speed * mag;
+  const jumpHeld = !!keys.Space || pad.jump;
 
   const guard = crouching && onGround;
   let bx = false, bz = false;
@@ -1045,14 +1063,14 @@ function update(dt) {
   if (feetW) {
     vy -= 10 * dt;
     vy *= Math.max(0, 1 - 3 * dt);
-    if (keys.Space) vy = 4;
+    if (jumpHeld) vy = 4;
     // climbing out: pushed against a bank, either holding Space or with your head above water
-    if ((bx || bz) && (keys.Space || headOut)) {
+    if ((bx || bz) && (jumpHeld || headOut)) {
       const ax = p.x + (bx ? Math.sign(vx) * 0.5 : 0), az = p.z + (bz ? Math.sign(vz) * 0.5 : 0);
       if (!boxCollides(ax, p.y + 1.4, az, 0.3, playerH)) vy = 9;
     }
   } else {
-    if (keys.Space && onGround) { vy = 8; onGround = false; }
+    if (jumpHeld && onGround) { vy = 8; onGround = false; }
     vy -= 25 * dt;
   }
   vy = Math.max(vy, -20);
@@ -1086,6 +1104,7 @@ const MOBS = {
   pig:    { hp: 8,  speed: 1.1, bw: 0.7,  bh: 0.6, bl: 1.0, legH: 0.35, legW: 0.22, hs: 0.45, color: 0xf0a0a8, head: 0xf5b0b8, leg: 0xd9858f, legs: 4, r: 0.45 },
   chicken:{ hp: 4,  speed: 1.0, bw: 0.35, bh: 0.4, bl: 0.5, legH: 0.3,  legW: 0.07, hs: 0.25, color: 0xffffff, head: 0xffffff, leg: 0xf0a020, legs: 2, r: 0.25, beak: true },
   turtle: { hp: 10, speed: 0.7, bw: 0.8,  bh: 0.3, bl: 1.0, legH: 0.15, legW: 0.2,  hs: 0.3,  color: 0x2f6b34, head: 0x9bbf6a, leg: 0x9bbf6a, legs: 4, r: 0.45, aquatic: true },
+  wolf:   { hp: 10, speed: 1.0, bw: 0.5,  bh: 0.5, bl: 0.95, legH: 0.45, legW: 0.16, hs: 0.38, color: 0x9a9a9a, head: 0xaaaaaa, leg: 0x888888, legs: 4, r: 0.4, hostile: true, dmg: 3 },
   fish:   { hp: 3,  speed: 0.9, bw: 0.2,  bh: 0.22, bl: 0.55, fish: true, r: 0.3 }
 };
 const FISHCOL = [0xf08030, 0xe0e0e0, 0x4a90d9, 0xe8c030];
@@ -1190,6 +1209,23 @@ function addDetails(type, s, g, mk, hy, hz) {
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) part(s.bw * 0.28, 0.04, s.bl * 0.28, 0x3a7f3e, sx * s.bw * 0.3, top + 0.01, sz * s.bl * 0.28);
     part(0.1, 0.06, 0.16, 0x9bbf6a, 0, s.legH + 0.05, -s.bl / 2 - 0.06);
   }
+  if (type === 'wolf') {
+    eyesFront(hs * 0.22, hs * 0.1, hs * 0.12);
+    // pointy ears with darker insides
+    for (const sx of [-1, 1]) {
+      part(0.1, 0.16, 0.06, 0x8a8a8a, sx * hs * 0.3, hy + hs / 2 + 0.08, hz - 0.04, -0.15 * sx);
+      part(0.05, 0.1, 0.02, 0x3a3a3a, sx * hs * 0.3, hy + hs / 2 + 0.07, hz - 0.01, -0.15 * sx);
+    }
+    // long snout with a black nose
+    part(hs * 0.5, hs * 0.35, 0.18, 0xbdbdbd, 0, hy - hs * 0.12, fz + 0.08);
+    part(0.07, 0.06, 0.04, 0x111111, 0, hy - hs * 0.04, fz + 0.18);
+    // light chest, darker stripe down the back
+    part(s.bw * 0.6, s.bh * 0.45, 0.03, 0xe0e0e0, 0, s.legH + s.bh * 0.4, s.bl / 2 + 0.005);
+    part(s.bw * 0.45, 0.03, s.bl * 0.7, 0x6a6a6a, 0, top, 0);
+    // bushy tail pointing up and back
+    part(0.12, 0.12, 0.4, 0x9a9a9a, 0, s.legH + s.bh * 0.9, -s.bl / 2 - 0.1, 0, 0.7);
+    part(0.11, 0.11, 0.1, 0xdcdcdc, 0, s.legH + s.bh * 0.9 + 0.14, -s.bl / 2 - 0.27, 0, 0.7);
+  }
   return wool;
 }
 
@@ -1272,7 +1308,7 @@ function spawnMob(type, x, y, z) {
     type, spec: s, group: g, x, y, z, vy: 0, vv: 0, rot: Math.random() * Math.PI * 2, hp: s.hp,
     timer: Math.random() * 3, moving: false, onGround: false, panic: 0, flash: 0, kx: 0, kz: 0,
     pivots, signs: s.fish ? [1] : (s.legs === 4 ? [1, -1, -1, 1] : [1, -1]), mats, walkT: 0,
-    h: mh, dying: false, dyingT: 0, sheared: false, regrow: 0, wool
+    h: mh, dying: false, dyingT: 0, sheared: false, regrow: 0, wool, biteCd: 0, aggro: 0, chasing: false
   });
 }
 function removeMob(m) {
@@ -1297,6 +1333,21 @@ function trySpawnMobs(c) {
       while (y > 0 && c.data[lx + CH * (lz + CH * y)] === 0) y--;
       if (c.data[lx + CH * (lz + CH * y)] !== 1) continue;
       spawnMob(t, c.cx * CH + lx + 0.5, y + 1, c.cz * CH + lz + 0.5);
+    }
+  }
+  // wolf packs on grass, never right next to the player
+  if (countMobs(['wolf']) < 8 && Math.random() < 0.18) {
+    const n = 2 + Math.floor(Math.random() * 2);
+    const bx = Math.floor(Math.random() * CH), bz = Math.floor(Math.random() * CH);
+    for (let i = 0; i < n; i++) {
+      const lx = Math.max(0, Math.min(CH - 1, bx + Math.floor(Math.random() * 5) - 2));
+      const lz = Math.max(0, Math.min(CH - 1, bz + Math.floor(Math.random() * 5) - 2));
+      let y = HEIGHT - 1;
+      while (y > 0 && c.data[lx + CH * (lz + CH * y)] === 0) y--;
+      if (c.data[lx + CH * (lz + CH * y)] !== 1) continue;
+      const wx = c.cx * CH + lx + 0.5, wz = c.cz * CH + lz + 0.5;
+      if (Math.hypot(wx - p.x, wz - p.z) < 24) continue;
+      spawnMob('wolf', wx, y + 1, wz);
     }
   }
   // fish schools in deeper water
@@ -1406,12 +1457,26 @@ function updateMob(m, dt) {
       m.rot = Math.random() * Math.PI * 2;
     }
   }
-  const spd = m.moving ? s.speed * (m.panic > 0 ? 2.6 : 1) : 0;
+  // wolves: chase and bite when you come close
+  m.chasing = false;
+  if (s.hostile && WOLF_ATTACKS) {
+    const dxp = p.x - m.x, dzp = p.z - m.z, dp = Math.hypot(dxp, dzp);
+    m.biteCd = Math.max(0, m.biteCd - dt);
+    if (dp < WOLF_AGGRO && Math.abs(p.y - m.y) < 3) m.aggro = 6;
+    else if (m.aggro > 0) m.aggro -= dt;
+    if (m.aggro > 0) {
+      m.chasing = true;
+      m.rot = Math.atan2(dxp, dzp);
+      m.moving = dp > 1.2;
+      if (dp < 1.7 && Math.abs(p.y - m.y) < 1.6 && m.biteCd <= 0) { m.biteCd = 1; mobBite(s.dmg); }
+    }
+  }
+  const spd = m.moving ? s.speed * (m.panic > 0 ? 2.6 : (m.chasing ? 3.4 : 1)) : 0;
   const sx = Math.sin(m.rot), sz = Math.cos(m.rot);
   let dx = sx * spd * dt + m.kx * dt, dz = sz * spd * dt + m.kz * dt;
   m.kx *= Math.max(0, 1 - 6 * dt); m.kz *= Math.max(0, 1 - 6 * dt);
 
-  if (m.moving && !inW && m.panic <= 0 && !s.aquatic) {
+  if (m.moving && !inW && m.panic <= 0 && !s.aquatic && !m.chasing) {
     const ax = Math.floor(m.x + sx * 0.9), az = Math.floor(m.z + sz * 0.9), fy = Math.floor(m.y);
     const a0 = getBlock(ax, fy, az);
     if (a0 === WATER || (a0 === 0 && getBlock(ax, fy - 1, az) === WATER)) {
@@ -1466,7 +1531,8 @@ function hitMob(m) {
   const ax = m.x - p.x, az = m.z - p.z, l = Math.hypot(ax, az) || 1;
   m.kx = ax / l * 6; m.kz = az / l * 6;
   m.vy = 5; m.onGround = false;
-  m.panic = 4; m.flash = 0.25;
+  if (m.spec.hostile && WOLF_ATTACKS) m.aggro = 10; else m.panic = 4;
+  m.flash = 0.25;
   if (m.hp <= 0) startDeath(m);
   if (def) wearSel(1);
 }
@@ -1753,7 +1819,7 @@ scene.add(crack);
 let leftDown = false, attackedPress = false, mining = null, atkCd = 0;
 function updateMining(dt) {
   atkCd = Math.max(0, atkCd - dt);
-  if (!leftDown || !locked() || attackedPress || panelOpen) { mining = null; crack.visible = false; return; }
+  if (!leftDown || !active() || attackedPress || panelOpen) { mining = null; crack.visible = false; return; }
   const r = raycastBlocks(6);
   if (!r || r.hit[1] <= 0) { mining = null; crack.visible = false; return; }
   if (!mining || mining.x !== r.hit[0] || mining.y !== r.hit[1] || mining.z !== r.hit[2]) {
@@ -1776,33 +1842,35 @@ function updateMining(dt) {
   }
 }
 
+function attackDown() {
+  leftDown = true; attackedPress = false;
+  const r = raycastBlocks(6);
+  const m = mobAtRay(r ? Math.min(4, r.t) : 4);
+  if (m) {
+    attackedPress = true;
+    if (atkCd <= 0) { atkCd = 0.4; hitMob(m); }
+  }
+}
+function attackUp() { leftDown = false; mining = null; crack.visible = false; }
+function useDown() {
+  const r = raycastBlocks(6);
+  if (r && r.b === 15) { openPanel('table'); return; }
+  const id = selId();
+  if (id === 119) {
+    const m = mobAtRay(r ? Math.min(4, r.t) : 4);
+    if (m && m.type === 'sheep' && !m.sheared && !m.dying) shearSheep(m);
+    return;
+  }
+  if (id === 120) { castOrReel(); return; }
+  if (FOOD[id]) { eat(id); return; }
+  if (r) placeBlock(r);
+}
 document.addEventListener('mousedown', (e) => {
   if (!locked()) return;
-  if (e.button === 0) {
-    leftDown = true; attackedPress = false;
-    const r = raycastBlocks(6);
-    const m = mobAtRay(r ? Math.min(4, r.t) : 4);
-    if (m) {
-      attackedPress = true;
-      if (atkCd <= 0) { atkCd = 0.4; hitMob(m); }
-    }
-  } else if (e.button === 2) {
-    const r = raycastBlocks(6);
-    if (r && r.b === 15) { openPanel('table'); return; }
-    const id = selId();
-    if (id === 119) {
-      const m = mobAtRay(r ? Math.min(4, r.t) : 4);
-      if (m && m.type === 'sheep' && !m.sheared && !m.dying) shearSheep(m);
-      return;
-    }
-    if (id === 120) { castOrReel(); return; }
-    if (FOOD[id]) { eat(id); return; }
-    if (r) placeBlock(r);
-  }
+  if (e.button === 0) attackDown();
+  else if (e.button === 2) useDown();
 });
-document.addEventListener('mouseup', (e) => {
-  if (e.button === 0) { leftDown = false; mining = null; crack.visible = false; }
-});
+document.addEventListener('mouseup', (e) => { if (e.button === 0) attackUp(); });
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ================= Controls =================
@@ -1810,10 +1878,10 @@ addEventListener('keydown', (e) => {
   if (e.code === 'ArrowDown' || e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyE') {
     if (panelOpen) closePanel(true);
-    else if (locked()) openPanel('inv');
+    else if (active()) openPanel('inv');
     return;
   }
-  if (e.code === 'KeyQ') { if (locked()) dropSlot(sel); return; }
+  if (e.code === 'KeyQ') { if (active()) dropSlot(sel); return; }
   if (e.code === 'Escape') { if (panelOpen) closePanel(false); return; }
   keys[e.code] = true;
   if (e.code.startsWith('Digit')) {
@@ -1833,7 +1901,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked()) startEl.style.display = 'none';
   else {
     leftDown = false; mining = null; crack.visible = false;
-    if (!panelOpen) startEl.style.display = 'flex';
+    if (!panelOpen && !pad.playing) startEl.style.display = 'flex';
   }
 });
 document.addEventListener('mousemove', (e) => {
@@ -1842,6 +1910,112 @@ document.addEventListener('mousemove', (e) => {
   pitch -= e.movementY * 0.002;
   pitch = Math.max(-1.55, Math.min(1.55, pitch));
 });
+
+// ================= Xbox / game controller =================
+function dz(v) { const a = Math.abs(v); return a < 0.18 ? 0 : Math.sign(v) * (a - 0.18) / 0.82; }
+function getPad() {
+  if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
+  const list = navigator.getGamepads();
+  for (let i = 0; i < list.length; i++) if (list[i] && list[i].connected) return list[i];
+  return null;
+}
+function padBtn(gp, i) { const b = gp.buttons[i]; return !!b && (b.pressed || b.value > 0.5); }
+function rumble(ms, strong) {
+  try {
+    const gp = getPad();
+    if (gp && gp.vibrationActuator && gp.vibrationActuator.playEffect) {
+      gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: strong * 0.5 });
+    }
+  } catch (e) {}
+}
+let padPrev = [], padFocus = 0, padRepeat = 0, padWas = false;
+function pollPad(dt) {
+  const gp = getPad();
+  pad.connected = !!gp;
+  if (gp && !padWas && !active()) toast('Controller connected. Press A to start.');
+  padWas = !!gp;
+  if (!gp) {
+    pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false; pad.sprint = false;
+    if (pad.playing) {
+      pad.playing = false; attackUp();
+      document.body.style.cursor = '';
+      if (!locked() && !panelOpen) startEl.style.display = 'flex';
+    }
+    padPrev = [];
+    return;
+  }
+  const cur = [];
+  for (let i = 0; i < 17; i++) cur.push(padBtn(gp, i));
+  const pressed = i => cur[i] && !padPrev[i];
+  const released = i => !cur[i] && padPrev[i];
+  const ax = i => dz(gp.axes[i] || 0);
+
+  // start screen: A or Start begins play with the controller
+  if (!active() && !panelOpen) {
+    pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false;
+    if (pressed(0) || pressed(9)) { pad.playing = true; startEl.style.display = 'none'; document.body.style.cursor = 'none'; }
+    padPrev = cur;
+    return;
+  }
+
+  // menus: D-pad or left stick moves, A presses, B / Y / Start closes
+  if (panelOpen) {
+    pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false;
+    if (pressed(1) || pressed(3) || pressed(9)) {
+      pad.playing = true; document.body.style.cursor = 'none';
+      closePanel(false);
+      padPrev = cur;
+      return;
+    }
+    const btns = Array.prototype.slice.call(panelEl.querySelectorAll('button:not(:disabled)'));
+    padRepeat -= dt;
+    const vy = ax(1);
+    let step = 0;
+    if (pressed(12)) { step = -1; padRepeat = 0.3; }
+    else if (pressed(13)) { step = 1; padRepeat = 0.3; }
+    else if (padRepeat <= 0 && (cur[12] || vy < -0.6)) { step = -1; padRepeat = 0.14; }
+    else if (padRepeat <= 0 && (cur[13] || vy > 0.6)) { step = 1; padRepeat = 0.14; }
+    if (btns.length) {
+      if (step) padFocus = (padFocus + step + btns.length) % btns.length;
+      padFocus = Math.max(0, Math.min(padFocus, btns.length - 1));
+      panelEl.querySelectorAll('.padfocus').forEach(b => b.classList.remove('padfocus'));
+      btns[padFocus].classList.add('padfocus');
+      if (step) btns[padFocus].scrollIntoView({ block: 'nearest' });
+      if (pressed(0)) btns[padFocus].click();
+    }
+    padPrev = cur;
+    return;
+  }
+
+  // playing
+  if (pressed(9)) {
+    // Start pauses
+    if (pad.playing) { pad.playing = false; attackUp(); document.body.style.cursor = ''; startEl.style.display = 'flex'; }
+    else document.exitPointerLock();
+    pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false;
+    padPrev = cur;
+    return;
+  }
+  pad.mx = ax(0);
+  pad.my = -ax(1);
+  const lk = v => Math.sign(v) * Math.pow(Math.abs(v), 1.6);
+  yaw -= lk(ax(2)) * 3.4 * dt;
+  pitch -= lk(ax(3)) * 2.6 * dt;
+  pitch = Math.max(-1.55, Math.min(1.55, pitch));
+  pad.jump = cur[0];
+  pad.crouch = cur[1];
+  if (pressed(10)) pad.sprint = !pad.sprint;
+  if (pad.my < 0.3) pad.sprint = false;
+  if (pressed(2)) dropSlot(sel);
+  if (pressed(3)) openPanel('inv');
+  if (pressed(4) || pressed(14)) { sel = (sel + NSLOTS - 1) % NSLOTS; refreshUI(); }
+  if (pressed(5) || pressed(15)) { sel = (sel + 1) % NSLOTS; refreshUI(); }
+  if (pressed(7)) attackDown();
+  if (released(7)) attackUp();
+  if (pressed(6)) useDown();
+  padPrev = cur;
+}
+addEventListener('gamepadconnected', () => { if (!active()) toast('Controller connected. Press A to start.'); });
 
 // ================= Start up =================
 function findSpawn() {
@@ -1870,6 +2044,7 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   frameNo++;
+  pollPad(dt);
   update(dt);
   updateSurvival(dt);
   updateMining(dt);
