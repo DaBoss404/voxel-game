@@ -17,19 +17,23 @@
   .fill{position:absolute;left:0;top:0;bottom:0;width:100%}
   .red{background:#d63a3a}
   .orange{background:#e0902a}
+  .steel{background:#7a8fa6}
   .bar span{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;text-shadow:1px 1px 2px #000}
   #hotbar{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:70vw;pointer-events:none}
   .slot{width:50px;height:50px;background:rgba(0,0,0,.55);border:3px solid #555;border-radius:6px;position:relative;display:flex;align-items:center;justify-content:center;font-size:24px;box-sizing:border-box}
   .slot.sel{border-color:#fff}
   .slot .cnt{position:absolute;right:3px;bottom:0;font-size:12px;color:#fff;text-shadow:1px 1px 2px #000}
   .slot .num{position:absolute;left:3px;top:0;font-size:10px;color:#ccc}
+  .slot .dur{position:absolute;left:4px;right:4px;bottom:2px;height:3px;background:#222}
+  .slot .dur i{display:block;height:100%}
   .sw{width:26px;height:26px;border-radius:3px;border:2px solid rgba(0,0,0,.4);box-sizing:border-box;flex:none}
   canvas.ic{width:28px;height:28px;image-rendering:pixelated}
-  #panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(780px,94vw);max-height:84vh;overflow:auto;background:rgba(25,25,25,.96);color:#fff;border-radius:10px;padding:14px 18px;display:none;box-sizing:border-box}
+  #panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,94vw);max-height:84vh;overflow:auto;background:rgba(25,25,25,.96);color:#fff;border-radius:10px;padding:14px 18px;display:none;box-sizing:border-box}
   #panel h2{margin:0 0 8px}
   #panel h3{margin:6px 0;font-size:15px;color:#bbb}
   #pcols{display:flex;gap:18px;flex-wrap:wrap}
-  #pcols>div{flex:1 1 280px}
+  #pcols>div{flex:1 1 300px}
+  .sub{font-weight:bold;color:#ccc;margin:8px 0 2px;font-size:13px}
   .row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:14px}
   .row .ico{width:30px;display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
   .row .txt{flex:1}
@@ -37,6 +41,7 @@
   .row button{background:#3a8a3a;color:#fff;border:0;border-radius:5px;padding:6px 12px;font-size:14px;cursor:pointer}
   .row button:disabled{background:#444;color:#888;cursor:not-allowed}
   .row .drop{background:#6a4a4a;padding:4px 8px;font-size:12px}
+  .row .eq{background:#3a6a9a;padding:4px 8px;font-size:12px}
   .hint{color:#999;font-size:12px;margin:10px 0 0}
 </style>
 </head>
@@ -49,6 +54,7 @@
 <div id="stats">
   <div class="bar"><div class="fill red" id="hpFill"></div><span id="hpTxt"></span></div>
   <div class="bar"><div class="fill orange" id="huFill"></div><span id="huTxt"></span></div>
+  <div class="bar"><div class="fill steel" id="arFill"></div><span id="arTxt"></span></div>
 </div>
 <div id="hotbar"></div>
 <div id="panel">
@@ -59,7 +65,7 @@
   </div>
   <p class="hint">Press E or Esc to close</p>
 </div>
-<div id="start">Click to play<br><br>WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Right click: place blocks, eat food, open crafting table<br>E: inventory and crafting. Q: drop an item<br>Keys 1-9 or mouse wheel: pick an item</div>
+<div id="start">Click to play<br><br>WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and armor. Q: drop an item<br>Keys 1-9 or mouse wheel: pick an item</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // ================= Settings =================
@@ -119,8 +125,14 @@ function caveAt(x, y, z, h) {
   }
   return false;
 }
-function isOre(x, y, z) {
-  return hash3(x >> 1, y >> 1, z >> 1) < 0.025 && hash3(x, y, z) < 0.75;
+// Ores hide in small clusters inside stone. Deeper = rarer and better.
+function oreAt(x, y, z) {
+  const cx = x >> 1, cy = y >> 1, cz = z >> 1;
+  if (y <= 16 && hash3(cx + 211, cy + 17, cz + 71) < 0.003 && hash3(x + 5, y + 9, z + 13) < 0.6) return 22; // diamond
+  if (y <= 28 && hash3(cx + 97, cy + 333, cz + 19) < 0.002 && hash3(x + 29, y + 3, z + 41) < 0.7) return 21; // gold
+  if (y < 44 && hash3(cx, cy, cz) < 0.008 && hash3(x, y, z) < 0.75) return 16; // iron
+  if (y < 50 && hash3(cx + 601, cy + 43, cz + 157) < 0.01 && hash3(x + 61, y + 19, z + 23) < 0.75) return 20; // copper
+  return 0;
 }
 
 // ================= Texture atlas (drawn by code) =================
@@ -165,6 +177,15 @@ function coralTile(i, base, light, dark) {
   paintTile(i, base, 0.18, P => {
     for (let k = 0; k < 14; k++) P(R16(), R16(), hx(light));
     for (let k = 0; k < 8; k++) P(R16(), R16(), hx(dark));
+  });
+}
+function oreTile(i, col, spark) {
+  paintTile(i, 0x808080, 0.22, P => {
+    for (let b = 0; b < 5; b++) {
+      const cx = 1 + Math.floor(rnd() * 13), cy = 1 + Math.floor(rnd() * 13);
+      for (const d of [[0, 0], [1, 0], [0, 1], [1, 1]]) P(cx + d[0], cy + d[1], hx(col));
+    }
+    for (let k = 0; k < 5; k++) P(R16(), R16(), hx(spark));
   });
 }
 paintTile(0, 0x5aa832, 0.28);
@@ -217,15 +238,13 @@ paintTile(19, 0x8a5a30, 0.12, P => {
   for (let y = 6; y < 12; y++) P(3, y, hx(0xc8c8c8));
   for (let x = 9; x < 13; x++) { P(x, 7, hx(0xd8d8d8)); P(x, 8, hx(0xb0b0b0)); }
 });
-paintTile(20, 0x808080, 0.22, P => {
-  for (let b = 0; b < 5; b++) {
-    const cx = 1 + Math.floor(rnd() * 13), cy = 1 + Math.floor(rnd() * 13);
-    for (const d of [[0, 0], [1, 0], [0, 1], [1, 1]]) P(cx + d[0], cy + d[1], hx(0xd8a070));
-  }
-});
+oreTile(20, 0xd8a070, 0xf0c090); // iron ore
 coralTile(21, 0xe05a8a, 0xff8ab0, 0xa03060);
 coralTile(22, 0xf08a30, 0xffc060, 0xb05a10);
 coralTile(23, 0x9a4ad8, 0xc88aff, 0x602a98);
+oreTile(24, 0xd27a4a, 0x4aa08a); // copper ore
+oreTile(25, 0xf2d23a, 0xfff0a0); // gold ore
+oreTile(26, 0x4ee8e0, 0xffffff); // diamond ore
 const atlasTex = new THREE.CanvasTexture(atlas);
 atlasTex.magFilter = THREE.NearestFilter;
 atlasTex.minFilter = THREE.NearestFilter;
@@ -235,7 +254,8 @@ atlasTex.generateMipmaps = false;
 const BT = {
   1:[0,1,2], 2:[2,2,2], 3:[3,3,3], 4:[4,4,4], 5:[5,5,5], 6:[7,6,7], 7:[9,8,9], 8:[11,10,11],
   9:[12,12,12], 10:[13,13,13], 11:[14,14,14], 12:[15,15,15], 13:[16,16,16], 14:[17,17,17],
-  15:[18,19,15], 16:[20,20,20], 17:[21,21,21], 18:[22,22,22], 19:[23,23,23]
+  15:[18,19,15], 16:[20,20,20], 17:[21,21,21], 18:[22,22,22], 19:[23,23,23],
+  20:[24,24,24], 21:[25,25,25], 22:[26,26,26]
 };
 function solid(b) { return b !== 0 && b !== WATER; }
 
@@ -247,27 +267,68 @@ const ITEMS = {
   15:{n:'Crafting Table',c:0x8a5a30,b:1,t:18},
   17:{n:'Pink Coral',c:0xe05a8a,b:1,t:21}, 18:{n:'Orange Coral',c:0xf08a30,b:1,t:22}, 19:{n:'Purple Coral',c:0x9a4ad8,b:1,t:23},
   100:{n:'Stick',k:'stick',dc:0x9a7a4a},
-  101:{n:'Wooden Sword',k:'sword',kc:'#b8924f',dc:0xb8924f},
-  102:{n:'Wooden Pickaxe',k:'pick',kc:'#b8924f',dc:0xb8924f},
-  109:{n:'Stone Pickaxe',k:'pick',kc:'#8a8a8a',dc:0x8a8a8a},
-  110:{n:'Iron Pickaxe',k:'pick',kc:'#e6e6e6',dc:0xe6e6e6},
-  111:{n:'Iron Ingot',k:'ingot',dc:0xd8d8d8},
   103:{n:'Raw Beef',e:'\uD83E\uDD69',dc:0xc0394a}, 104:{n:'Raw Porkchop',e:'\uD83E\uDD53',dc:0xf0a0a8},
   105:{n:'Raw Mutton',e:'\uD83C\uDF56',dc:0xd9768a}, 106:{n:'Raw Chicken',e:'\uD83C\uDF57',dc:0xf0d0c0},
   107:{n:'Feather',e:'\uD83E\uDEB6',dc:0xffffff}, 108:{n:'Leather',c:0x9a5a2a},
-  112:{n:'Raw Fish',e:'\uD83D\uDC1F',dc:0xe08040}, 113:{n:'Turtle Scute',c:0x3d7a3a}
+  111:{n:'Iron Ingot',k:'ingot',kc:'#d8d8d8',dc:0xd8d8d8},
+  112:{n:'Raw Fish',e:'\uD83D\uDC1F',dc:0xe08040}, 113:{n:'Turtle Scute',c:0x3d7a3a},
+  114:{n:'Copper Ingot',k:'ingot',kc:'#d27a4a',dc:0xd27a4a},
+  115:{n:'Gold Ingot',k:'ingot',kc:'#f2d23a',dc:0xf2d23a},
+  116:{n:'Diamond',k:'gem',kc:'#4ee8e0',dc:0x4ee8e0},
+  117:{n:'Wool',k:'wool',dc:0xf2f2f2}, 118:{n:'String',k:'string',dc:0xf2f2f2},
+  119:{n:'Shears',k:'shears',dc:0xd0d0d0}, 120:{n:'Fishing Rod',k:'rod',dc:0x9a7a4a}
 };
-// Block mining info: h = seconds to break by hand, tool = pickaxe speeds it up, d = item dropped
+
+// Tools: pickaxe, axe, sword in six materials (ids 200+)
+const TOOLS = {}, ARMOR = {};
+const GEARDUR = { 119: 238, 120: 64 };
+const TMATS = [
+  { n:'Wooden',  col:'#b8924f', mult:1.7, tier:1, dur:59,   dmg:3, need:{ g:[12,13,14] } },
+  { n:'Stone',   col:'#8a8a8a', mult:2.6, tier:2, dur:131,  dmg:4, need:{ i:3 } },
+  { n:'Copper',  col:'#d27a4a', mult:3.3, tier:2, dur:190,  dmg:4, need:{ i:114 } },
+  { n:'Iron',    col:'#e6e6e6', mult:4.2, tier:3, dur:250,  dmg:5, need:{ i:111 } },
+  { n:'Golden',  col:'#f2d23a', mult:6,   tier:1, dur:32,   dmg:3, need:{ i:115 } },
+  { n:'Diamond', col:'#4ee8e0', mult:6,   tier:4, dur:1561, dmg:6, need:{ i:116 } }
+];
+const TTYPES = [['pick', 'Pickaxe', 3, 2], ['axe', 'Axe', 3, 2], ['sword', 'Sword', 2, 1]];
+TMATS.forEach((m, mi) => TTYPES.forEach((t, ti) => {
+  const id = 200 + mi * 10 + ti;
+  TOOLS[id] = { type: t[0], mult: m.mult, tier: m.tier, dur: m.dur, dmg: t[0] === 'sword' ? m.dmg : Math.max(1, m.dmg - 1) };
+  ITEMS[id] = { n: m.n + ' ' + t[1], k: t[0], kc: m.col, dc: parseInt(m.col.slice(1), 16) };
+}));
+// Armor: points per piece come from your table (leather, iron, gold, diamond). Copper is in between.
+const AMATS = [
+  { n:'Leather', col:'#9a5a2a', pts:[1,3,2,1], dur:[55,80,75,65],     mat:108 },
+  { n:'Copper',  col:'#d27a4a', pts:[2,4,3,1], dur:[121,176,165,143], mat:114 },
+  { n:'Iron',    col:'#e6e6e6', pts:[2,6,5,2], dur:[165,240,225,195], mat:111 },
+  { n:'Golden',  col:'#f2d23a', pts:[2,5,3,1], dur:[77,112,105,91],   mat:115 },
+  { n:'Diamond', col:'#4ee8e0', pts:[3,8,6,3], dur:[363,528,495,429], mat:116 }
+];
+const APIECES = [['helmet', 'Helmet', 5], ['chest', 'Chestplate', 8], ['legs', 'Leggings', 7], ['boots', 'Boots', 4]];
+AMATS.forEach((m, mi) => APIECES.forEach((a, ai) => {
+  const id = 300 + mi * 10 + ai;
+  ARMOR[id] = { slot: a[0], pts: m.pts[ai], dur: m.dur[ai] };
+  ITEMS[id] = { n: m.n + ' ' + a[1], k: a[0], kc: m.col, dc: parseInt(m.col.slice(1), 16) };
+}));
+function isGear(id) { return !!(TOOLS[id] || ARMOR[id] || GEARDUR[id]); }
+function maxDur(id) { return TOOLS[id] ? TOOLS[id].dur : (ARMOR[id] ? ARMOR[id].dur : (GEARDUR[id] || 0)); }
+// what you can pull out of the water besides fish
+const FISH_TOOLS = [119];
+for (let mi = 0; mi < 4; mi++) for (let ti = 0; ti < 3; ti++) FISH_TOOLS.push(200 + mi * 10 + ti);
+
+// Block mining info: h = seconds to break by hand, tool = which tool speeds it up, d = item dropped, minTier = pickaxe level needed to collect
 const BI = {
-  1:{h:0.9,d:2}, 2:{h:0.8,d:2}, 3:{h:2.2,tool:1,d:3}, 4:{h:0.7,d:4},
-  6:{h:2,d:6}, 7:{h:2,d:7}, 8:{h:2,d:8}, 9:{h:0.3,d:0}, 10:{h:0.3,d:0}, 11:{h:0.3,d:0},
-  12:{h:1.6,d:12}, 13:{h:1.6,d:13}, 14:{h:1.6,d:14}, 15:{h:1.8,d:15},
-  16:{h:3.5,tool:1,d:111,minTier:2},
-  17:{h:0.6,d:17}, 18:{h:0.6,d:18}, 19:{h:0.6,d:19}
+  1:{h:0.9,d:2}, 2:{h:0.8,d:2}, 3:{h:2.2,tool:'pick',d:3}, 4:{h:0.7,d:4},
+  6:{h:2,tool:'axe',d:6}, 7:{h:2,tool:'axe',d:7}, 8:{h:2,tool:'axe',d:8},
+  9:{h:0.3,d:0}, 10:{h:0.3,d:0}, 11:{h:0.3,d:0},
+  12:{h:1.6,tool:'axe',d:12}, 13:{h:1.6,tool:'axe',d:13}, 14:{h:1.6,tool:'axe',d:14}, 15:{h:1.8,tool:'axe',d:15},
+  16:{h:3.5,tool:'pick',d:111,minTier:2},
+  17:{h:0.6,d:17}, 18:{h:0.6,d:18}, 19:{h:0.6,d:19},
+  20:{h:3.2,tool:'pick',d:114,minTier:2},
+  21:{h:3.8,tool:'pick',d:115,minTier:3},
+  22:{h:4.5,tool:'pick',d:116,minTier:3}
 };
 const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2 };
-function tierOf(id) { return { 102: 1, 109: 2, 110: 3 }[id] || 0; }
-function toolMult(id) { return { 102: 1.7, 109: 2.6, 110: 4.2 }[id] || 1; }
 
 // ================= Scene =================
 const scene = new THREE.Scene();
@@ -310,7 +371,7 @@ function generateChunk(cx, cz) {
         let b;
         if (y === h) b = sandy ? 4 : 1;
         else if (y >= h - 3) b = sandy ? 4 : 2;
-        else b = (y < 44 && isOre(wx, y, wz)) ? 16 : 3;
+        else b = (y < 50 ? oreAt(wx, y, wz) : 0) || 3;
         data[lx + CH * (lz + CH * y)] = b;
       }
       // caves (never open into the ocean floor)
@@ -526,15 +587,88 @@ function boxCollides(x, y, z, r, h) {
   return false;
 }
 
-// ================= Inventory and crafting =================
+// ================= Inventory =================
+// Stackable items live in inv (id -> amount). Tools, armor, shears and rods are single items with their own durability, kept in gear.
 const inv = {};
-let sel = 0;
-function count(id) { return inv[id] || 0; }
-function owned() { return Object.keys(inv).map(Number).sort((a, b) => a - b); }
-function add(id, n) { inv[id] = count(id) + n; refreshUI(); }
-function take(id, n) { inv[id] = count(id) - n; if (inv[id] <= 0) delete inv[id]; refreshUI(); }
-function fixSel() { if (!inv[sel]) { const o = owned(); sel = o.length ? o[0] : 0; } }
+const gear = [];
+const equipped = { helmet: null, chest: null, legs: null, boots: null };
+let uidN = 1;
+let sel = null; // 's:ID' for a stack, 'g:UID' for a gear item
 
+function count(id) { return inv[id] || 0; }
+function slots() {
+  const a = [];
+  Object.keys(inv).map(Number).sort((x, y) => x - y).forEach(id => a.push({ key: 's:' + id, id, count: inv[id] }));
+  gear.forEach(g => a.push({ key: 'g:' + g.uid, id: g.id, g }));
+  return a;
+}
+function selGear() {
+  if (!sel || sel[0] !== 'g') return null;
+  const u = Number(sel.slice(2));
+  for (const g of gear) if (g.uid === u) return g;
+  return null;
+}
+function selId() {
+  if (!sel) return 0;
+  if (sel[0] === 's') return Number(sel.slice(2));
+  const g = selGear();
+  return g ? g.id : 0;
+}
+function fixSel() {
+  if (sel && sel[0] === 's' && inv[Number(sel.slice(2))]) return;
+  if (selGear()) return;
+  const s = slots();
+  sel = s.length ? s[0].key : null;
+}
+function add(id, n) {
+  if (isGear(id)) { for (let i = 0; i < n; i++) gear.push({ uid: uidN++, id, dur: maxDur(id) }); }
+  else inv[id] = count(id) + n;
+  refreshUI();
+}
+function take(id, n) { inv[id] = count(id) - n; if (inv[id] <= 0) delete inv[id]; refreshUI(); }
+function wearSel(n) {
+  const g = selGear();
+  if (!g) return;
+  g.dur -= n;
+  if (g.dur <= 0) {
+    gear.splice(gear.indexOf(g), 1);
+    toast('Your ' + ITEMS[g.id].n + ' broke!');
+  }
+  refreshUI();
+}
+
+// armor
+function armorPoints() {
+  let t = 0;
+  for (const k in equipped) if (equipped[k]) t += ARMOR[equipped[k].id].pts;
+  return t;
+}
+function equipGear(g) {
+  const def = ARMOR[g.id];
+  if (!def) return;
+  gear.splice(gear.indexOf(g), 1);
+  const prev = equipped[def.slot];
+  if (prev) gear.push(prev);
+  equipped[def.slot] = g;
+  refreshUI(); refreshStats();
+}
+function unequip(slot) {
+  if (!equipped[slot]) return;
+  gear.push(equipped[slot]);
+  equipped[slot] = null;
+  refreshUI(); refreshStats();
+}
+function wearArmor() {
+  for (const k in equipped) {
+    const g = equipped[k];
+    if (!g) continue;
+    g.dur -= 1;
+    if (g.dur <= 0) { equipped[k] = null; toast('Your ' + ITEMS[g.id].n + ' broke!'); }
+  }
+  refreshUI(); refreshStats();
+}
+
+// ================= Recipes =================
 const PL = [12, 13, 14];
 const RECIPES = [
   { n: 'Oak Planks', out: 12, q: 4, need: [{ i: 6, n: 1 }] },
@@ -542,11 +676,19 @@ const RECIPES = [
   { n: 'Spruce Planks', out: 14, q: 4, need: [{ i: 8, n: 1 }] },
   { n: 'Sticks', out: 100, q: 4, need: [{ g: PL, n: 2 }] },
   { n: 'Crafting Table', out: 15, q: 1, need: [{ g: PL, n: 4 }] },
-  { n: 'Wooden Sword', out: 101, q: 1, table: true, need: [{ g: PL, n: 2 }, { i: 100, n: 1 }] },
-  { n: 'Wooden Pickaxe', out: 102, q: 1, table: true, need: [{ g: PL, n: 3 }, { i: 100, n: 2 }] },
-  { n: 'Stone Pickaxe', out: 109, q: 1, table: true, need: [{ i: 3, n: 3 }, { i: 100, n: 2 }] },
-  { n: 'Iron Pickaxe', out: 110, q: 1, table: true, need: [{ i: 111, n: 3 }, { i: 100, n: 2 }] }
+  { n: 'Shears', out: 119, q: 1, need: [{ i: 111, n: 2 }] },
+  { n: 'String', out: 118, q: 3, need: [{ i: 117, n: 2 }] },
+  { n: 'Fishing Rod', out: 120, q: 1, need: [{ i: 100, n: 2 }, { i: 118, n: 2 }] }
 ];
+TMATS.forEach((m, mi) => TTYPES.forEach((t, ti) => {
+  const id = 200 + mi * 10 + ti;
+  const mn = m.need.g ? { g: m.need.g, n: t[2] } : { i: m.need.i, n: t[2] };
+  RECIPES.push({ n: ITEMS[id].n, out: id, q: 1, table: true, need: [mn, { i: 100, n: t[3] }] });
+}));
+AMATS.forEach((m, mi) => APIECES.forEach((a, ai) => {
+  const id = 300 + mi * 10 + ai;
+  RECIPES.push({ n: ITEMS[id].n, out: id, q: 1, table: true, need: [{ i: m.mat, n: a[2] }] });
+}));
 function have(nd) { return nd.g ? nd.g.reduce((s, i) => s + count(i), 0) : count(nd.i); }
 function canCraft(r) { return r.need.every(nd => have(nd) >= nd.n); }
 function needText(r) { return r.need.map(nd => nd.n + ' ' + (nd.g ? 'Planks (any)' : ITEMS[nd.i].n)).join(' + '); }
@@ -586,20 +728,46 @@ function toast(m) {
 }
 function drawKind(cx, k, col) {
   const P = (x, y, c) => { cx.fillStyle = c; cx.fillRect(x, y, 1, 1); };
-  const wood = '#8a6a35';
+  const R = (x, y, w, h, c) => { cx.fillStyle = c; cx.fillRect(x, y, w, h); };
+  const wood = '#8a6a35', dark = 'rgba(0,0,0,0.3)', lite = 'rgba(255,255,255,0.4)';
   if (k === 'stick') { for (let i = 0; i < 10; i++) P(3 + i, 12 - i, wood); }
   else if (k === 'pick') {
     for (let i = 0; i < 8; i++) P(3 + i, 14 - i, wood);
     for (let j = 0; j < 8; j++) { P(6 + j, 3 + j, col); P(7 + j, 3 + j, col); }
+  }
+  else if (k === 'axe') {
+    for (let i = 0; i < 9; i++) P(3 + i, 14 - i, wood);
+    R(8, 2, 4, 5, col); R(12, 3, 2, 3, col); R(8, 2, 4, 1, lite);
   }
   else if (k === 'sword') {
     for (let i = 0; i < 9; i++) { P(5 + i, 11 - i, col); P(6 + i, 11 - i, col); }
     for (let j = 0; j < 5; j++) P(3 + j, 9 + j, '#5a4020');
     P(4, 12, wood); P(3, 13, wood);
   }
-  else if (k === 'ingot') {
-    for (let y = 6; y < 12; y++) for (let x = 3; x < 13; x++) P(x, y, y === 6 ? '#f2f2f2' : (y === 11 ? '#a0a0a0' : '#d8d8d8'));
+  else if (k === 'ingot') { R(3, 6, 10, 6, col); R(3, 6, 10, 1, 'rgba(255,255,255,0.55)'); R(3, 11, 10, 1, dark); }
+  else if (k === 'gem') {
+    const rows = [[7, 8], [6, 9], [5, 10], [4, 11], [5, 10], [6, 9], [7, 8]];
+    rows.forEach((r, i) => R(r[0], 4 + i, r[1] - r[0] + 1, 1, col));
+    P(6, 6, '#ffffff'); P(7, 5, '#ffffff');
   }
+  else if (k === 'wool') {
+    R(3, 3, 10, 10, '#f2f2f2');
+    for (const q of [[5, 5], [9, 6], [6, 9], [10, 10], [4, 11]]) P(q[0], q[1], '#d0d0d0');
+  }
+  else if (k === 'string') { for (let i = 0; i < 12; i++) P(2 + i, 8 + Math.round(Math.sin(i * 0.9) * 2), '#f2f2f2'); }
+  else if (k === 'shears') {
+    for (let i = 0; i < 8; i++) { P(4 + i, 2 + i, '#d0d0d0'); P(11 - i, 2 + i, '#d0d0d0'); }
+    R(2, 10, 3, 4, '#c04040'); R(11, 10, 3, 4, '#c04040');
+  }
+  else if (k === 'rod') {
+    for (let i = 0; i < 10; i++) P(2 + i, 13 - i, wood);
+    for (let y = 3; y < 12; y++) P(13, y, '#eeeeee');
+    P(12, 3, '#eeeeee'); P(13, 12, '#c04040');
+  }
+  else if (k === 'helmet') { R(3, 4, 10, 3, col); R(3, 7, 3, 5, col); R(10, 7, 3, 5, col); R(3, 4, 10, 1, lite); }
+  else if (k === 'chest') { R(2, 3, 12, 4, col); R(4, 7, 8, 7, col); R(2, 3, 12, 1, lite); R(4, 13, 8, 1, dark); }
+  else if (k === 'legs') { R(4, 3, 8, 3, col); R(4, 6, 3, 8, col); R(9, 6, 3, 8, col); R(4, 3, 8, 1, lite); }
+  else if (k === 'boots') { R(3, 5, 4, 6, col); R(9, 5, 4, 6, col); R(2, 10, 5, 3, col); R(8, 10, 5, 3, col); R(3, 5, 4, 1, lite); R(9, 5, 4, 1, lite); }
 }
 function icon(id) {
   const it = ITEMS[id];
@@ -618,43 +786,77 @@ function icon(id) {
 function refreshUI() {
   fixSel();
   hotbarEl.innerHTML = '';
-  owned().forEach((id, i) => {
-    const s = document.createElement('div');
-    s.className = 'slot' + (id === sel ? ' sel' : '');
-    s.appendChild(icon(id));
-    if (i < 9) { const nm = document.createElement('span'); nm.className = 'num'; nm.textContent = i + 1; s.appendChild(nm); }
-    const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = inv[id]; s.appendChild(ct);
-    hotbarEl.appendChild(s);
+  slots().forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'slot' + (s.key === sel ? ' sel' : '');
+    el.appendChild(icon(s.id));
+    if (i < 9) { const nm = document.createElement('span'); nm.className = 'num'; nm.textContent = i + 1; el.appendChild(nm); }
+    if (s.count) { const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = s.count; el.appendChild(ct); }
+    else if (s.g) {
+      const mx = maxDur(s.id);
+      if (s.g.dur < mx) {
+        const f = s.g.dur / mx;
+        const bar = document.createElement('div'); bar.className = 'dur';
+        const fill = document.createElement('i');
+        fill.style.width = (f * 100) + '%';
+        fill.style.background = f > 0.5 ? '#4cd04c' : (f > 0.25 ? '#e0c030' : '#e04040');
+        bar.appendChild(fill); el.appendChild(bar);
+      }
+    }
+    hotbarEl.appendChild(el);
   });
   if (panelOpen) renderPanel();
+}
+function mkRow(iconNode, text, sub, buttons) {
+  const row = document.createElement('div'); row.className = 'row';
+  const ic = document.createElement('div'); ic.className = 'ico'; if (iconNode) ic.appendChild(iconNode);
+  const tx = document.createElement('div'); tx.className = 'txt';
+  tx.appendChild(document.createTextNode(text));
+  if (sub) { const nd = document.createElement('div'); nd.className = 'need'; nd.textContent = sub; tx.appendChild(nd); }
+  row.appendChild(ic); row.appendChild(tx);
+  buttons.forEach(b => row.appendChild(b));
+  return row;
+}
+function mkBtn(label, cls, fn, disabled) {
+  const b = document.createElement('button');
+  if (cls) b.className = cls;
+  b.textContent = label;
+  b.disabled = !!disabled;
+  b.addEventListener('click', fn);
+  return b;
 }
 function renderPanel() {
   ptitle.textContent = panelMode === 'table' ? 'Crafting Table' : 'Inventory';
   invList.innerHTML = '';
-  const o = owned();
-  if (!o.length) invList.textContent = 'Empty. Punch a tree to get logs!';
-  for (const id of o) {
-    const row = document.createElement('div'); row.className = 'row';
-    const ic = document.createElement('div'); ic.className = 'ico'; ic.appendChild(icon(id));
-    const tx = document.createElement('div'); tx.className = 'txt'; tx.textContent = ITEMS[id].n + '  x' + inv[id];
-    const db = document.createElement('button'); db.className = 'drop'; db.textContent = 'Drop';
-    db.addEventListener('click', () => dropOne(id));
-    row.appendChild(ic); row.appendChild(tx); row.appendChild(db); invList.appendChild(row);
-  }
+  const eh = document.createElement('div'); eh.className = 'sub';
+  eh.textContent = 'Armor worn (' + armorPoints() + ' points)';
+  invList.appendChild(eh);
+  [['helmet', 'Helmet'], ['chest', 'Chestplate'], ['legs', 'Leggings'], ['boots', 'Boots']].forEach(sl => {
+    const g = equipped[sl[0]];
+    if (g) {
+      invList.appendChild(mkRow(icon(g.id), ITEMS[g.id].n, 'Durability ' + g.dur + '/' + maxDur(g.id), [mkBtn('Take off', 'eq', () => unequip(sl[0]))]));
+    } else {
+      invList.appendChild(mkRow(null, sl[1] + ': empty', '', []));
+    }
+  });
+  const ih = document.createElement('div'); ih.className = 'sub'; ih.textContent = 'Items';
+  invList.appendChild(ih);
+  const all = slots();
+  if (!all.length) invList.appendChild(document.createTextNode('Empty. Punch a tree to get logs!'));
+  all.forEach(s => {
+    const btns = [];
+    if (s.g && ARMOR[s.id]) btns.push(mkBtn('Equip', 'eq', () => equipGear(s.g)));
+    btns.push(mkBtn('Drop', 'drop', () => dropSlot(s.key)));
+    const label = ITEMS[s.id].n + (s.count ? '  x' + s.count : '');
+    const sub = s.g ? 'Durability ' + s.g.dur + '/' + maxDur(s.id) : '';
+    invList.appendChild(mkRow(icon(s.id), label, sub, btns));
+  });
   recipesEl.innerHTML = '';
   for (const r of RECIPES) {
-    const row = document.createElement('div'); row.className = 'row';
-    const ic = document.createElement('div'); ic.className = 'ico'; ic.appendChild(icon(r.out));
-    const tx = document.createElement('div'); tx.className = 'txt';
-    tx.appendChild(document.createTextNode(r.n + (r.q > 1 ? ' x' + r.q : '')));
-    const nd = document.createElement('div'); nd.className = 'need';
-    nd.textContent = needText(r) + (r.table && panelMode !== 'table' ? '  (needs a crafting table)' : '');
-    tx.appendChild(nd);
-    const btn = document.createElement('button'); btn.textContent = 'Craft';
-    btn.disabled = !canCraft(r) || (r.table && panelMode !== 'table');
-    btn.addEventListener('click', () => craft(r));
-    row.appendChild(ic); row.appendChild(tx); row.appendChild(btn);
-    recipesEl.appendChild(row);
+    const blocked = r.table && panelMode !== 'table';
+    const sub = needText(r) + (blocked ? '  (needs a crafting table)' : '');
+    recipesEl.appendChild(mkRow(icon(r.out), r.n + (r.q > 1 ? ' x' + r.q : ''), sub,
+      [mkBtn('Craft', '', () => craft(r), !canCraft(r) || blocked)]));
   }
 }
 function locked() { return document.pointerLockElement === renderer.domElement; }
@@ -672,13 +874,16 @@ function closePanel(relock) {
   if (relock) renderer.domElement.requestPointerLock();
 }
 
-// ================= Health and hunger =================
+// ================= Health, hunger, armor =================
 let health = 20, hunger = 20, hungerT = 0, regenT = 0, starveT = 0, fallPeak = null, moving = false;
 function refreshStats() {
   document.getElementById('hpFill').style.width = (health / 20 * 100) + '%';
   document.getElementById('hpTxt').textContent = '\u2764 ' + health + '/20';
   document.getElementById('huFill').style.width = (hunger / 20 * 100) + '%';
   document.getElementById('huTxt').textContent = '\uD83C\uDF57 ' + hunger + '/20';
+  const ap = armorPoints();
+  document.getElementById('arFill').style.width = (ap / 20 * 100) + '%';
+  document.getElementById('arTxt').textContent = '\uD83D\uDEE1 ' + ap + '/20';
 }
 function hurt(n) {
   health = Math.max(0, health - n);
@@ -686,6 +891,12 @@ function hurt(n) {
   setTimeout(() => { hurtEl.style.opacity = 0; }, 150);
   refreshStats();
   if (health <= 0) die();
+}
+function fallHurt(dmg) {
+  const red = Math.min(0.8, armorPoints() * 0.04);
+  const fin = Math.round(dmg * (1 - red));
+  wearArmor();
+  if (fin > 0) hurt(fin);
 }
 function die() {
   toast('You died! Respawning...');
@@ -719,6 +930,7 @@ const keys = {};
 
 function update(dt) {
   const feetW = getBlock(Math.floor(p.x), Math.floor(p.y + 0.4), Math.floor(p.z)) === WATER;
+  const headOut = getBlock(Math.floor(p.x), Math.floor(p.y + 1.6), Math.floor(p.z)) !== WATER;
   const fwd = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
   moving = fwd !== 0 || strafe !== 0;
@@ -727,15 +939,21 @@ function update(dt) {
   const vx = (-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe) / len * speed;
   const vz = (-Math.cos(yaw) * fwd - Math.sin(yaw) * strafe) / len * speed;
 
+  let bx = false, bz = false;
   const nx = p.x + vx * dt;
-  if (!boxCollides(nx, p.y, p.z, 0.3, 1.8)) p.x = nx;
+  if (!boxCollides(nx, p.y, p.z, 0.3, 1.8)) p.x = nx; else bx = true;
   const nz = p.z + vz * dt;
-  if (!boxCollides(p.x, p.y, nz, 0.3, 1.8)) p.z = nz;
+  if (!boxCollides(p.x, p.y, nz, 0.3, 1.8)) p.z = nz; else bz = true;
 
   if (feetW) {
     vy -= 10 * dt;
     vy *= Math.max(0, 1 - 3 * dt);
     if (keys.Space) vy = 4;
+    // climbing out: pushed against a bank, either holding Space or with your head above water
+    if ((bx || bz) && (keys.Space || headOut)) {
+      const ax = p.x + (bx ? Math.sign(vx) * 0.5 : 0), az = p.z + (bz ? Math.sign(vz) * 0.5 : 0);
+      if (!boxCollides(ax, p.y + 1.4, az, 0.3, 1.8)) vy = 9;
+    }
   } else {
     if (keys.Space && onGround) { vy = 8; onGround = false; }
     vy -= 25 * dt;
@@ -752,7 +970,7 @@ function update(dt) {
 
   // fall damage
   if (onGround) {
-    if (fallPeak !== null) { const dmg = Math.floor(fallPeak - p.y) - 3; if (dmg > 0) hurt(dmg); }
+    if (fallPeak !== null) { const dmg = Math.floor(fallPeak - p.y) - 3; if (dmg > 0) fallHurt(dmg); }
     fallPeak = null;
   } else if (feetW) fallPeak = null;
   else if (fallPeak === null || p.y > fallPeak) fallPeak = p.y;
@@ -776,11 +994,11 @@ const FISHCOL = [0xf08030, 0xe0e0e0, 0x4a90d9, 0xe8c030];
 const LAND = ['sheep', 'cow', 'pig', 'chicken'];
 // What each animal can drop: id, min/max amount, chance (0 to 1)
 const DROPS = {
-  cow:     [{ id: 103, min: 1, max: 2, ch: 0.8 }, { id: 108, min: 1, max: 2, ch: 0.4 }],
+  cow:     [{ id: 103, min: 1, max: 2, ch: 0.8 }, { id: 108, min: 1, max: 2, ch: 0.6 }],
   pig:     [{ id: 104, min: 1, max: 2, ch: 0.8 }],
   sheep:   [{ id: 105, min: 1, max: 2, ch: 0.8 }],
   chicken: [{ id: 106, min: 1, max: 1, ch: 0.8 }, { id: 107, min: 1, max: 2, ch: 0.5 }],
-  fish:    [{ id: 112, min: 1, max: 1, ch: 0.9 }],
+  fish:    [{ id: 112, min: 1, max: 1, ch: 1.0 }],
   turtle:  [{ id: 113, min: 1, max: 1, ch: 0.4 }]
 };
 const mobs = [];
@@ -843,7 +1061,7 @@ function spawnMob(type, x, y, z) {
     type, spec: s, group: g, x, y, z, vy: 0, vv: 0, rot: Math.random() * Math.PI * 2, hp: s.hp,
     timer: Math.random() * 3, moving: false, onGround: false, panic: 0, flash: 0, kx: 0, kz: 0,
     pivots, signs: s.fish ? [1] : (s.legs === 4 ? [1, -1, -1, 1] : [1, -1]), mats, walkT: 0,
-    h: mh, dying: false, dyingT: 0
+    h: mh, dying: false, dyingT: 0, sheared: false, regrow: 0
   });
 }
 function removeMob(m) {
@@ -954,6 +1172,16 @@ function updateMob(m, dt) {
   }
   if (s.fish) { updateFish(m, dt); return; }
 
+  // sheared sheep slowly regrow their wool
+  if (m.sheared) {
+    m.regrow -= dt;
+    if (m.regrow <= 0) {
+      m.sheared = false;
+      m.mats[0].color = s.color;
+      m.mats[0].m.color.set(s.color);
+    }
+  }
+
   const inW = getBlock(Math.floor(m.x), Math.floor(m.y + 0.2), Math.floor(m.z)) === WATER;
   if (m.panic > 0) {
     m.panic -= dt;
@@ -1021,13 +1249,24 @@ function startDeath(m) {
 }
 function hitMob(m) {
   if (m.dying) return;
-  const dmg = sel === 101 ? 3 : (tierOf(sel) > 0 ? 2 : 1);
-  m.hp -= dmg;
+  const g = selGear();
+  const def = g ? TOOLS[g.id] : null;
+  m.hp -= def ? def.dmg : 1;
   const ax = m.x - p.x, az = m.z - p.z, l = Math.hypot(ax, az) || 1;
   m.kx = ax / l * 6; m.kz = az / l * 6;
   m.vy = 5; m.onGround = false;
   m.panic = 4; m.flash = 0.25;
   if (m.hp <= 0) startDeath(m);
+  if (def) wearSel(1);
+}
+function shearSheep(m) {
+  m.sheared = true; m.regrow = 60;
+  m.mats[0].color = 0xe8b9a6;
+  m.mats[0].m.color.set(0xe8b9a6);
+  const n = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) dropItem(117, m.x, m.y + 0.8, m.z);
+  toast('Sheared!');
+  wearSel(1);
 }
 function mobAtRay(maxd) {
   const dir = new THREE.Vector3();
@@ -1056,18 +1295,31 @@ function dropItem(id, x, y, z, o) {
   mesh.position.set(x, y, z);
   scene.add(mesh);
   drops.push({
-    id, mesh, x, y, z, age: 0, delay: o.delay || 0.6,
+    id, mesh, x, y, z, age: 0, delay: o.delay || 0.6, g: o.g || null,
     vy: o.vy !== undefined ? o.vy : 4 + Math.random() * 2,
     vx: o.vx !== undefined ? o.vx : (Math.random() - 0.5) * 2.5,
     vz: o.vz !== undefined ? o.vz : (Math.random() - 0.5) * 2.5
   });
 }
-function dropOne(id) {
-  if (!count(id)) return;
+function dropSlot(key) {
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  dropItem(id, p.x + dir.x * 0.7, p.y + 1.4, p.z + dir.z * 0.7, { vx: dir.x * 4, vy: 2.5, vz: dir.z * 4, delay: 1.6 });
-  take(id, 1);
+  const px = p.x + dir.x * 0.7, py = p.y + 1.4, pz = p.z + dir.z * 0.7;
+  const o = { vx: dir.x * 4, vy: 2.5, vz: dir.z * 4, delay: 1.6 };
+  if (key[0] === 's') {
+    const id = Number(key.slice(2));
+    if (!count(id)) return;
+    dropItem(id, px, py, pz, o);
+    take(id, 1);
+  } else {
+    const u = Number(key.slice(2));
+    const i = gear.findIndex(g => g.uid === u);
+    if (i < 0) return;
+    const g = gear.splice(i, 1)[0];
+    o.g = g;
+    dropItem(g.id, px, py, pz, o);
+    refreshUI();
+  }
 }
 function removeDrop(i) {
   const d = drops[i];
@@ -1085,22 +1337,95 @@ function updateDrops(dt) {
     const nz = d.z + d.vz * dt;
     if (!solid(getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(nz)))) d.z = nz; else d.vz = 0;
     d.vx *= Math.max(0, 1 - 3 * dt); d.vz *= Math.max(0, 1 - 3 * dt);
-    d.vy -= 20 * dt;
-    d.vy = Math.max(d.vy, -15);
+    const inW = getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z)) === WATER;
+    if (inW) {
+      d.vy -= 4 * dt;
+      d.vy *= Math.max(0, 1 - 4 * dt);
+      d.vy = Math.max(d.vy, -1.5);
+    } else {
+      d.vy -= 20 * dt;
+      d.vy = Math.max(d.vy, -15);
+    }
     const ny = d.y + d.vy * dt;
+    let resting = false;
     if (solid(getBlock(Math.floor(d.x), Math.floor(ny - 0.14), Math.floor(d.z)))) {
       d.y = Math.floor(ny - 0.14) + 1 + 0.14;
-      d.vy = 0;
+      d.vy = 0; resting = true;
     } else d.y = ny;
-    const bob = d.vy === 0 ? Math.sin(d.age * 3) * 0.05 + 0.05 : 0;
+    const bob = resting ? Math.sin(d.age * 3) * 0.05 + 0.05 : 0;
     d.mesh.position.set(d.x, d.y + bob, d.z);
     d.mesh.rotation.y = d.age * 2;
-    if (d.age > d.delay && Math.hypot(d.x - p.x, d.z - p.z) < 1.5 && Math.abs(d.y - (p.y + 0.9)) < 1.6) {
-      add(d.id, 1);
+    if (d.age > d.delay && Math.hypot(d.x - p.x, d.z - p.z) < 1.7 && Math.abs(d.y - (p.y + 0.9)) < 1.7) {
+      if (d.g) { gear.push(d.g); refreshUI(); }
+      else add(d.id, 1);
       toast('+1 ' + ITEMS[d.id].n);
       removeDrop(i);
     }
   }
+}
+
+// ================= Fishing =================
+let fishing = null;
+const bobber = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
+bobber.visible = false;
+scene.add(bobber);
+function waterTarget() {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const o = camera.position;
+  for (let t = 0.5; t < 8; t += 0.05) {
+    const x = Math.floor(o.x + dir.x * t), y = Math.floor(o.y + dir.y * t), z = Math.floor(o.z + dir.z * t);
+    const b = getBlock(x, y, z);
+    if (solid(b)) return null;
+    if (b === WATER) {
+      let yy = y;
+      while (getBlock(x, yy + 1, z) === WATER) yy++;
+      return { x, y: yy, z };
+    }
+  }
+  return null;
+}
+function cancelFishing() { fishing = null; bobber.visible = false; }
+function castOrReel() {
+  if (!fishing) {
+    const w = waterTarget();
+    if (!w) { toast('Aim at water to cast your line.'); return; }
+    fishing = { state: 'wait', timer: 3 + Math.random() * 6, x: w.x + 0.5, y: w.y + 0.9, z: w.z + 0.5, t: 0 };
+    toast('Line cast. Wait for a bite...');
+    return;
+  }
+  if (fishing.state === 'bite') { catchFish(); }
+  else toast('You reeled in. Nothing yet.');
+  cancelFishing();
+}
+function catchFish() {
+  const r = Math.random();
+  if (r < 0.65) { add(112, 1); toast('You caught a fish!'); }
+  else if (r < 0.9) {
+    const id = FISH_TOOLS[Math.floor(Math.random() * FISH_TOOLS.length)];
+    const dur = Math.max(1, Math.floor(maxDur(id) * (0.25 + Math.random() * 0.5)));
+    gear.push({ uid: uidN++, id, dur });
+    toast('You caught a ' + ITEMS[id].n + '!');
+    refreshUI();
+  }
+  else { add(118, 1); toast('You caught some string.'); }
+  wearSel(1);
+}
+function updateFishing(dt) {
+  if (!fishing) return;
+  if (selId() !== 120 || Math.hypot(fishing.x - p.x, fishing.z - p.z) > 14) { cancelFishing(); return; }
+  fishing.t += dt;
+  bobber.visible = true;
+  let by = fishing.y + Math.sin(fishing.t * 3) * 0.03;
+  if (fishing.state === 'wait') {
+    fishing.timer -= dt;
+    if (fishing.timer <= 0) { fishing.state = 'bite'; fishing.timer = 1.5; toast('A fish is biting! Right-click now!'); }
+  } else {
+    by -= 0.18 + Math.sin(fishing.t * 20) * 0.05;
+    fishing.timer -= dt;
+    if (fishing.timer <= 0) { toast('It got away...'); cancelFishing(); return; }
+  }
+  bobber.position.set(fishing.x, by, fishing.z);
 }
 
 // ================= Mining and placing =================
@@ -1124,23 +1449,28 @@ function breakBlock(r) {
   if (y <= 0) return;
   const info = BI[r.b];
   let drop = info ? info.d : r.b;
-  if (info && info.minTier && tierOf(sel) < info.minTier) {
-    toast('Iron ore needs a stone pickaxe or better to collect.');
+  const g = selGear();
+  const def = g ? TOOLS[g.id] : null;
+  const pickTier = def && def.type === 'pick' ? def.tier : 0;
+  if (info && info.minTier && pickTier < info.minTier) {
+    toast('You need a better pickaxe to collect this ore.');
     drop = 0;
   }
   setBlock(x, y, z, 0);
   if (drop) add(drop, 1);
+  if (def) wearSel(def.type === 'sword' ? 2 : 1);
 }
 function placeBlock(r) {
   const t = r.prev;
-  if (!t || !ITEMS[sel] || !ITEMS[sel].b) return;
+  const id = selId();
+  if (!t || !ITEMS[id] || !ITEMS[id].b) return;
   if (t[1] < 1 || t[1] >= HEIGHT) return;
   const cur = getBlock(t[0], t[1], t[2]);
   if (cur !== 0 && cur !== WATER) return;
   const overlap = p.x - 0.3 < t[0] + 1 && p.x + 0.3 > t[0] && p.y < t[1] + 1 && p.y + 1.8 > t[1] && p.z - 0.3 < t[2] + 1 && p.z + 0.3 > t[2];
   if (overlap) return;
-  setBlock(t[0], t[1], t[2], sel);
-  take(sel, 1);
+  setBlock(t[0], t[1], t[2], id);
+  take(id, 1);
 }
 
 const wire = new THREE.LineSegments(
@@ -1185,7 +1515,10 @@ function updateMining(dt) {
     mining = { x: r.hit[0], y: r.hit[1], z: r.hit[2], t: 0 };
   }
   const info = BI[r.b] || { h: 1 };
-  const time = info.h / (info.tool ? toolMult(sel) : 1);
+  const g = selGear();
+  const def = g ? TOOLS[g.id] : null;
+  const fast = def && info.tool && def.type === info.tool;
+  const time = info.h / (fast ? def.mult : 1);
   mining.t += dt;
   if (mining.t >= time) {
     breakBlock(r);
@@ -1211,7 +1544,14 @@ document.addEventListener('mousedown', (e) => {
   } else if (e.button === 2) {
     const r = raycastBlocks(6);
     if (r && r.b === 15) { openPanel('table'); return; }
-    if (FOOD[sel]) { eat(sel); return; }
+    const id = selId();
+    if (id === 119) {
+      const m = mobAtRay(r ? Math.min(4, r.t) : 4);
+      if (m && m.type === 'sheep' && !m.sheared && !m.dying) shearSheep(m);
+      return;
+    }
+    if (id === 120) { castOrReel(); return; }
+    if (FOOD[id]) { eat(id); return; }
     if (r) placeBlock(r);
   }
 });
@@ -1227,24 +1567,25 @@ addEventListener('keydown', (e) => {
     else if (locked()) openPanel('inv');
     return;
   }
-  if (e.code === 'KeyQ') { if (locked() && sel) dropOne(sel); return; }
+  if (e.code === 'KeyQ') { if (locked() && sel) dropSlot(sel); return; }
   if (e.code === 'Escape') { if (panelOpen) closePanel(false); return; }
   keys[e.code] = true;
   if (e.code.startsWith('Digit')) {
     const n = Number(e.code.slice(5));
-    const o = owned();
-    if (n >= 1 && n <= 9 && o[n - 1]) { sel = o[n - 1]; refreshUI(); }
+    const s = slots();
+    if (n >= 1 && n <= 9 && s[n - 1]) { sel = s[n - 1].key; refreshUI(); }
   }
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 addEventListener('wheel', (e) => {
   if (!locked()) return;
-  const o = owned();
-  if (!o.length) return;
-  let i = o.indexOf(sel);
-  i = (i + (e.deltaY > 0 ? 1 : -1) + o.length) % o.length;
-  sel = o[i];
+  const s = slots();
+  if (!s.length) return;
+  let i = s.findIndex(x => x.key === sel);
+  if (i < 0) i = 0;
+  i = (i + (e.deltaY > 0 ? 1 : -1) + s.length) % s.length;
+  sel = s[i].key;
   refreshUI();
 });
 startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());
@@ -1292,6 +1633,7 @@ function loop(now) {
   update(dt);
   updateSurvival(dt);
   updateMining(dt);
+  updateFishing(dt);
   for (let i = mobs.length - 1; i >= 0; i--) {
     const m = mobs[i];
     const c = chunks.get(ck(Math.floor(m.x / CH), Math.floor(m.z / CH)));
