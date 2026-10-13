@@ -147,6 +147,9 @@ const CAVE_TUNNEL = 0.08, CAVE_ROOM = 0.76;
 const WOLF_ATTACKS = true, WOLF_AGGRO = 5;
 // Forests: lower these numbers for fewer trees, raise them for thicker forests.
 const FOREST_DENSITY = 0.018, SPARSE_DENSITY = 0.003;
+// Rainforest: bigger JUNGLE_DENSITY = thicker jungle.
+const JUNGLE_DENSITY = 0.028;
+let RAIN_ON = true; // rainforests only appear in worlds made with this version, so older worlds keep their terrain
 
 // ================= Noise =================
 function hash2(x, z) {
@@ -336,6 +339,42 @@ function saplingTile(i, leafCol, shape, trunkCol) {
 saplingTile(27, 0x3f8f2a, 'blob', 0x6a4a22);
 saplingTile(28, 0x6fae3c, 'blob', 0xe6e3d8);
 saplingTile(29, 0x2b6a3a, 'cone', 0x3b2a1a);
+// Rainforest: jungle wood, leaves, planks, ferns and rich grass
+paintTile(30, 0x5a4a2a, 0.2, P => {
+  for (const x of [1, 4, 8, 11, 14]) for (let y = 0; y < 16; y++) if (rnd() < 0.8) P(x, y, hx(0x3a3018));
+  for (let k = 0; k < 8; k++) P(R16(), R16(), hx(0x4f8a2a)); // moss
+});
+ringTop(31, 0xa07a40, 0x5a4a2a, 0x7a5a2a);
+leafTile(32, 0x1f7a2a);
+paintTile(33, 0xa0623a, 0.1, P => {
+  for (const y of [2, 6, 10, 14]) for (let x = 0; x < 16; x++) P(x, y, hx(0x7a4524));
+  for (const q of [[4, 3], [11, 7], [6, 11], [13, 0]]) for (let k = 0; k < 3; k++) P(q[0], q[1] + k, hx(0x7a4524));
+});
+saplingTile(34, 0x1f8a2a, 'blob', 0x5a4a2a);
+function fernTile(i) {
+  const ox = (i % AT) * TS, oy = Math.floor(i / AT) * TS;
+  const P = (x, y, c) => { actx.fillStyle = c; actx.fillRect(ox + x, oy + y, 1, 1); };
+  actx.clearRect(ox, oy, TS, TS);
+  const fronds = [[-1.1, -0.35], [-0.75, -0.95], [0, -1.25], [0.75, -0.95], [1.1, -0.35]];
+  for (const f of fronds) for (let k = 0; k < 8; k++) {
+    const x = Math.round(7.5 + f[0] * k * 0.9), y = Math.round(15 + f[1] * k * 1.5);
+    if (x < 0 || x > 15 || y < 0 || y > 15) continue;
+    P(x, y, rgb(0x2f9a35, 0.75 + rnd() * 0.5));
+    if (k > 2 && k < 7) {
+      P(Math.max(0, x - 1), y, rgb(0x3aaa40, 0.7 + rnd() * 0.5));
+      P(Math.min(15, x + 1), y, rgb(0x3aaa40, 0.7 + rnd() * 0.5));
+    }
+  }
+  P(7, 15, hx(0x4a3a1a)); P(8, 15, hx(0x4a3a1a));
+}
+fernTile(35);
+paintTile(36, 0x2f9a30, 0.3, P => { for (let k = 0; k < 12; k++) P(R16(), R16(), hx(0x1f7a28)); });
+paintTile(37, 0x8b5a2b, 0.3, P => {
+  for (let x = 0; x < 16; x++) {
+    const d = 3 + (rnd() < 0.45 ? 1 : 0) + (rnd() < 0.2 ? 1 : 0);
+    for (let y = 0; y < d; y++) P(x, y, rgb(0x2f9a30, 1 + (rnd() - 0.5) * 0.28));
+  }
+});
 const atlasTex = new THREE.CanvasTexture(atlas);
 atlasTex.magFilter = THREE.NearestFilter;
 atlasTex.minFilter = THREE.NearestFilter;
@@ -347,9 +386,10 @@ const BT = {
   9:[12,12,12], 10:[13,13,13], 11:[14,14,14], 12:[15,15,15], 13:[16,16,16], 14:[17,17,17],
   15:[18,19,15], 16:[20,20,20], 17:[21,21,21], 18:[22,22,22], 19:[23,23,23],
   20:[24,24,24], 21:[25,25,25], 22:[26,26,26],
-  23:[27,27,27], 24:[28,28,28], 25:[29,29,29]
+  23:[27,27,27], 24:[28,28,28], 25:[29,29,29],
+  26:[31,30,31], 27:[32,32,32], 28:[33,33,33], 29:[34,34,34], 30:[35,35,35], 31:[36,37,2]
 };
-function isPlant(b) { return b >= 23 && b <= 25; } // saplings: 23 oak, 24 birch, 25 spruce
+function isPlant(b) { return (b >= 23 && b <= 25) || b === 29 || b === 30; } // saplings (23 oak, 24 birch, 25 spruce, 29 jungle) and ferns (30)
 function solid(b) { return b !== 0 && b !== WATER && !isPlant(b); }
 
 // ================= Items =================
@@ -372,14 +412,16 @@ const ITEMS = {
   119:{n:'Shears',k:'shears',dc:0xd0d0d0}, 120:{n:'Fishing Rod',k:'rod',dc:0x9a7a4a},
   121:{n:'Oak Seeds',k:'seed',kc:'#3f8f2a',dc:0x3f8f2a,plant:23},
   122:{n:'Birch Seeds',k:'seed',kc:'#6fae3c',dc:0x6fae3c,plant:24},
-  123:{n:'Spruce Seeds',k:'seed',kc:'#2b6a3a',dc:0x2b6a3a,plant:25}
+  123:{n:'Spruce Seeds',k:'seed',kc:'#2b6a3a',dc:0x2b6a3a,plant:25},
+  124:{n:'Jungle Seeds',k:'seed',kc:'#1f8a2a',dc:0x1f8a2a,plant:29},
+  26:{n:'Jungle Log',c:0x5a4a2a,b:1,t:30}, 28:{n:'Jungle Planks',c:0xa0623a,b:1,t:33}
 };
 
 // Tools: pickaxe, axe, sword in six materials (ids 200+)
 const TOOLS = {}, ARMOR = {};
 const GEARDUR = { 119: 238, 120: 64 };
 const TMATS = [
-  { n:'Wooden',  col:'#b8924f', mult:1.7, tier:1, dur:59,   dmg:3, need:{ g:[12,13,14] } },
+  { n:'Wooden',  col:'#b8924f', mult:1.7, tier:1, dur:59,   dmg:3, need:{ g:[12,13,14,28] } },
   { n:'Stone',   col:'#8a8a8a', mult:2.6, tier:2, dur:131,  dmg:4, need:{ i:3 } },
   { n:'Copper',  col:'#d27a4a', mult:3.3, tier:2, dur:190,  dmg:4, need:{ i:114 } },
   { n:'Iron',    col:'#e6e6e6', mult:4.2, tier:3, dur:250,  dmg:5, need:{ i:111 } },
@@ -423,7 +465,8 @@ const BI = {
   20:{h:3.2,tool:'pick',d:114,minTier:2},
   21:{h:3.8,tool:'pick',d:115,minTier:3},
   22:{h:4.5,tool:'pick',d:116,minTier:3},
-  23:{h:0.05,d:121}, 24:{h:0.05,d:122}, 25:{h:0.05,d:123}
+  23:{h:0.05,d:121}, 24:{h:0.05,d:122}, 25:{h:0.05,d:123},
+  26:{h:2,tool:'axe',d:26}, 27:{h:0.3,d:0}, 28:{h:1.6,tool:'axe',d:28}, 29:{h:0.05,d:124}, 30:{h:0.05,d:0}, 31:{h:0.9,d:2}
 };
 const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2 };
 
@@ -463,6 +506,37 @@ function treeAt(wx, wz) {
   return true;
 }
 
+// Rainforest regions: big smooth patches of land (only in worlds made with rainforest support)
+function isRain(wx, wz) {
+  if (!RAIN_ON) return false;
+  const n = 0.7 * vnoise(wx * 0.004 + 700, wz * 0.004 - 300) + 0.3 * vnoise(wx * 0.012 + 40, wz * 0.012 + 90);
+  return n > 0.58;
+}
+// Jungle trees are tall and spaced out, with a wide canopy. Same idea as treeAt, but with more room around each trunk.
+function jungleTreeAt(wx, wz) {
+  const hv = hash2(wx * 7 + 29, wz * 11 + 17);
+  if (hv >= JUNGLE_DENSITY) return false;
+  for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
+    if (!dx && !dz) continue;
+    const nh = hash2((wx + dx) * 7 + 29, (wz + dz) * 11 + 17);
+    if (nh < hv && nh < JUNGLE_DENSITY) return false;
+  }
+  return true;
+}
+// the shape of a jungle tree, relative to the ground block: [dx, dy, dz, block, onlyIntoEmptySpace]
+function jungleTreeCells(th) {
+  const cells = [];
+  const layers = [[th - 2, 2], [th - 1, 3], [th, 3], [th + 1, 2], [th + 2, 1]];
+  for (const L of layers) {
+    for (let dx = -L[1]; dx <= L[1]; dx++) for (let dz = -L[1]; dz <= L[1]; dz++) {
+      if (L[1] >= 2 && Math.abs(dx) === L[1] && Math.abs(dz) === L[1]) continue;
+      cells.push([dx, L[0], dz, 27, true]);
+    }
+  }
+  for (let dy = 1; dy <= th; dy++) cells.push([0, dy, 0, 26, false]);
+  return cells;
+}
+
 function generateChunk(cx, cz) {
   const data = new Uint8Array(CH * HEIGHT * CH);
   const top = new Int16Array(CH * CH);
@@ -475,10 +549,11 @@ function generateChunk(cx, cz) {
       const wx = ox + lx, wz = oz + lz;
       const h = hm[(lx + 2) + 20 * (lz + 2)];
       const sandy = h <= SEA + 1;
+      const rain = !sandy && isRain(wx, wz);
       top[lx + CH * lz] = h;
       for (let y = 0; y <= h; y++) {
         let b;
-        if (y === h) b = sandy ? 4 : 1;
+        if (y === h) b = sandy ? 4 : (rain ? 31 : 1);
         else if (y >= h - 3) b = sandy ? 4 : 2;
         else b = (y < 50 ? oreAt(wx, y, wz) : 0) || 3;
         data[lx + CH * (lz + CH * y)] = b;
@@ -508,8 +583,14 @@ function generateChunk(cx, cz) {
       const h = hm[(lx + 2) + 20 * (lz + 2)];
       if (h <= SEA + 1) continue;
       const wx = ox + lx, wz = oz + lz;
-      if (!treeAt(wx, wz)) continue;
+      const rainT = isRain(wx, wz);
+      if (rainT ? !jungleTreeAt(wx, wz) : !treeAt(wx, wz)) continue;
       if (h > SEA + 2 && caveAt(wx, h, wz, h)) continue;
+      if (rainT) {
+        const jth = 8 + Math.floor(hash2(wx + 99, wz + 77) * 5);
+        for (const jc of jungleTreeCells(jth)) setL(lx + jc[0], h + jc[1], lz + jc[2], jc[3], jc[4]);
+        continue;
+      }
       const bn = vnoise(wx * 0.004 + 100, wz * 0.004 - 50);
       const type = bn < 0.38 ? 1 : (bn < 0.66 ? 0 : 2); // 0 oak, 1 birch, 2 spruce
       const logId = [6, 7, 8][type], leafId = [9, 10, 11][type];
@@ -534,6 +615,16 @@ function generateChunk(cx, cz) {
         }
       }
       for (let y = h + 1; y <= h + th; y++) setL(lx, y, lz, logId, false);
+    }
+  }
+  // ferns on the rainforest floor
+  if (RAIN_ON) {
+    for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+      const wx = ox + lx, wz = oz + lz;
+      const h = hm[(lx + 2) + 20 * (lz + 2)];
+      if (h <= SEA + 1 || data[lx + CH * (lz + CH * h)] !== 31) continue;
+      if (data[lx + CH * (lz + CH * (h + 1))] !== 0) continue;
+      if (hash2(wx * 5 + 3, wz * 11 + 7) < 0.14) data[lx + CH * (lz + CH * (h + 1))] = 30;
     }
   }
   // bring back anything the player built or dug here in an earlier visit
@@ -598,7 +689,7 @@ function meshChunk(c) {
       for (let lx = 0; lx < CH; lx++) {
         const b = d[lx + CH * (lz + CH * y)];
         if (!b) continue;
-        if (b >= 23 && b <= 25) {
+        if (isPlant(b)) {
           // saplings are two crossed see-through pictures
           const ptile = BT[b][1];
           const pu0 = (ptile % AT) / AT, pv0 = 1 - (Math.floor(ptile / AT) + 1) / AT;
@@ -628,7 +719,7 @@ function meshChunk(c) {
           const F = FACES[f];
           const n = nb(c, lx + F.dir[0], y + F.dir[1], lz + F.dir[2]);
           if (isW) { if (n !== 0) continue; }
-          else if (n !== 0 && n !== WATER && !(n >= 23 && n <= 25)) continue;
+          else if (n !== 0 && n !== WATER && !isPlant(n)) continue;
           const tile = bt[f === 2 ? 0 : (f === 3 ? 2 : 1)];
           const u0 = (tile % AT) / AT, v0 = 1 - (Math.floor(tile / AT) + 1) / AT;
           const s = F.shade * vr * lt;
@@ -852,11 +943,12 @@ function wearArmor() {
 }
 
 // ================= Recipes =================
-const PL = [12, 13, 14];
+const PL = [12, 13, 14, 28];
 const RECIPES = [
   { n: 'Oak Planks', out: 12, q: 4, need: [{ i: 6, n: 1 }] },
   { n: 'Birch Planks', out: 13, q: 4, need: [{ i: 7, n: 1 }] },
   { n: 'Spruce Planks', out: 14, q: 4, need: [{ i: 8, n: 1 }] },
+  { n: 'Jungle Planks', out: 28, q: 4, need: [{ i: 26, n: 1 }] },
   { n: 'Sticks', out: 100, q: 4, need: [{ g: PL, n: 2 }] },
   { n: 'Crafting Table', out: 15, q: 1, need: [{ g: PL, n: 4 }] },
   { n: 'Shears', out: 119, q: 1, need: [{ i: 111, n: 2 }] },
@@ -1460,7 +1552,7 @@ function spawnMob(type, x, y, z) {
     timer: Math.random() * 3, moving: false, onGround: false, panic: 0, flash: 0, kx: 0, kz: 0,
     pivots, signs: s.fish ? [1] : (s.legs === 4 ? [1, -1, -1, 1] : [1, -1]), mats, walkT: 0,
     h: mh, dying: false, dyingT: 0, sheared: false, regrow: 0, wool, biteCd: 0, aggro: 0, chasing: false,
-    eaten: 0, calm: 0, tamed: false, target: null, targetT: 0, fallPeak: null
+    maxHp: s.hp, eaten: 0, calm: 0, tamed: false, target: null, targetT: 0, fallPeak: null, grudge: null, grudgeT: 0
   });
 }
 function removeMob(m) {
@@ -1483,7 +1575,7 @@ function trySpawnMobs(c) {
       const lx = Math.floor(Math.random() * CH), lz = Math.floor(Math.random() * CH);
       let y = HEIGHT - 1;
       while (y > 0 && c.data[lx + CH * (lz + CH * y)] === 0) y--;
-      if (c.data[lx + CH * (lz + CH * y)] !== 1) continue;
+      { const gb = c.data[lx + CH * (lz + CH * y)]; if (gb !== 1 && gb !== 31) continue; }
       spawnMob(t, c.cx * CH + lx + 0.5, y + 1, c.cz * CH + lz + 0.5);
     }
   }
@@ -1496,7 +1588,7 @@ function trySpawnMobs(c) {
       const lz = Math.max(0, Math.min(CH - 1, bz + Math.floor(Math.random() * 5) - 2));
       let y = HEIGHT - 1;
       while (y > 0 && c.data[lx + CH * (lz + CH * y)] === 0) y--;
-      if (c.data[lx + CH * (lz + CH * y)] !== 1) continue;
+      { const gb = c.data[lx + CH * (lz + CH * y)]; if (gb !== 1 && gb !== 31) continue; }
       const wx = c.cx * CH + lx + 0.5, wz = c.cz * CH + lz + 0.5;
       if (Math.hypot(wx - p.x, wz - p.z) < 24) continue;
       spawnMob('wolf', wx, y + 1, wz);
@@ -1614,6 +1706,7 @@ function updateFish(m, dt) {
 }
 // ================= Wolves: taming, pets and fighting =================
 const MEAT = { 103: 1, 104: 1, 105: 1, 106: 1 }; // raw beef, porkchop, mutton and chicken
+let petToastAt = 0;
 // an open spot on the ground a few blocks from a position (used to place and call back pets)
 function groundSpotNear(cx, cy, cz) {
   for (let r = 2; r <= 5; r++) {
@@ -1631,13 +1724,14 @@ function groundSpotNear(cx, cy, cz) {
 }
 function restorePets(list) {
   if (!list) return;
-  list.forEach(pt => {
+  list.slice(0, 1).forEach(pt => { // only one pet wolf at a time
     const sp = groundSpotNear(p.x, p.y, p.z);
     if (!sp) return;
     spawnMob('wolf', sp[0], sp[1], sp[2]);
     const w = mobs[mobs.length - 1];
     w.tamed = true;
-    w.hp = Math.max(1, pt.hp || 10);
+    w.maxHp = 20;
+    w.hp = Math.max(1, Math.min(20, pt.hp || 20));
     w.wool.forEach(x => { x.visible = true; });
   });
 }
@@ -1652,6 +1746,7 @@ function meatNear(m, r) {
 }
 function tameWolf(m) {
   m.tamed = true; m.aggro = 0; m.target = null; m.eaten = 0;
+  m.maxHp = 20; m.hp = 20; // a pet wolf is tougher than a wild one
   m.wool.forEach(w => { w.visible = true; }); // the red collar
   spawnHearts(m.x, m.y + 0.9, m.z);
   toast('The wolf is now your pet!');
@@ -1659,45 +1754,99 @@ function tameWolf(m) {
 // pets go after whatever you attack, or whatever attacks you
 function petsTarget(tg) {
   if (!tg || tg.tamed || tg.dying) return;
-  for (const m of mobs) if (m.tamed && !m.dying) { m.target = tg; m.targetT = 15; }
+  for (const m of mobs) if (m.tamed && !m.dying) { m.target = tg; m.targetT = 15; m.stuckN = 0; m.lastGoalD = undefined; }
 }
-function petBite(pet, tg, dmg) {
-  tg.hp -= dmg;
-  const ax = tg.x - pet.x, az = tg.z - pet.z, l = Math.hypot(ax, az) || 1;
-  tg.kx = ax / l * 5; tg.kz = az / l * 5; tg.vy = 4; tg.onGround = false; tg.flash = 0.25;
-  if (!tg.spec.hostile) tg.panic = 3;
-  if (tg.hp <= 0) startDeath(tg);
+// one animal bites another. A pet that gets bitten fights back, and a hostile animal that a pet bites turns on that pet.
+function biteMob(att, vic, dmg) {
+  vic.hp -= dmg;
+  const ax = vic.x - att.x, az = vic.z - att.z, l = Math.hypot(ax, az) || 1;
+  vic.kx = ax / l * 5; vic.kz = az / l * 5; vic.vy = 4; vic.onGround = false; vic.flash = 0.25;
+  if (!vic.spec.hostile) vic.panic = 3;
+  if (vic.tamed && !vic.dying) { vic.target = att; vic.targetT = 15; }
+  if (att.tamed && vic.spec.hostile && !vic.tamed) { vic.grudge = att; vic.grudgeT = 15; }
+  if (vic.hp <= 0) startDeath(vic);
 }
-function teleportPet(m) {
-  const sp = groundSpotNear(p.x, p.y, p.z);
+function teleportPet(m, cx, cy, cz) {
+  const sp = groundSpotNear(cx, cy, cz);
   if (!sp) return;
   m.x = sp[0]; m.y = sp[1]; m.z = sp[2];
   m.vy = 0; m.fallPeak = null; m.kx = 0; m.kz = 0;
+  m.stuckN = 0; m.lastGoalD = undefined; m.stuckT = 0;
+}
+// has the pet failed to get any closer to where it is heading for a few seconds? (blocked by a cliff or a wall)
+function petStuck(m, dt, d) {
+  m.stuckT = (m.stuckT || 0) + dt;
+  if (m.stuckT < 1) return false;
+  m.stuckT = 0;
+  if (d > 4 && m.lastGoalD !== undefined && d > m.lastGoalD - 0.4) m.stuckN = (m.stuckN || 0) + 1; else m.stuckN = 0;
+  m.lastGoalD = d;
+  return m.stuckN >= 3;
 }
 function petAI(m, dt, s, dxp, dzp, dp) {
   if (m.target && (m.target.dying || mobs.indexOf(m.target) < 0 || m.targetT <= 0)) m.target = null;
   if (m.target) {
     m.targetT -= dt;
-    const tg = m.target, tx = tg.x - m.x, tz = tg.z - m.z, td = Math.hypot(tx, tz);
+    const tg = m.target, tx = tg.x - m.x, tz = tg.z - m.z, td = Math.hypot(tx, tz), tdy = Math.abs(tg.y - m.y);
     if (td > 30) m.target = null;
     else {
       m.chasing = true;
       m.rot = Math.atan2(tx, tz);
       m.moving = td > 1.3;
-      if (td < 1.8 && Math.abs(tg.y - m.y) < 1.8 && m.biteCd <= 0) { m.biteCd = 1; petBite(m, tg, s.dmg); }
+      if (petStuck(m, dt, Math.hypot(td, tdy))) { teleportPet(m, tg.x, tg.y, tg.z); return; } // blocked: leap over to it
+      if (td < 1.8 && tdy < 1.8 && m.biteCd <= 0) { m.biteCd = 1; biteMob(m, tg, s.dmg); }
       return;
     }
   }
-  if (dp > 22) { teleportPet(m); return; } // too far behind: join you
-  if (dp > 5) { m.chasing = true; m.rot = Math.atan2(dxp, dzp); m.moving = true; }
+  // a hurt pet eats dropped meat to heal, and slowly heals on its own
+  m.regen = (m.regen || 0) + dt;
+  if (m.regen >= 6) { m.regen = 0; if (m.hp < m.maxHp) m.hp++; }
+  if (m.hp < m.maxHp) {
+    const snack = meatNear(m, 7);
+    if (snack) {
+      const mx = snack.x - m.x, mz = snack.z - m.z, md = Math.hypot(mx, mz);
+      m.chasing = true; m.rot = Math.atan2(mx, mz); m.moving = md > 0.9;
+      if (md < 1.3) {
+        removeDrop(drops.indexOf(snack));
+        m.hp = Math.min(m.maxHp, m.hp + 4);
+        spawnHearts(m.x, m.y + 0.9, m.z);
+      }
+      return;
+    }
+  }
+  // too far behind, or on a very different level: join you
+  if (dp > 22 || Math.abs(p.y - m.y) > 7) { teleportPet(m, p.x, p.y, p.z); return; }
+  if (dp > 5) {
+    m.chasing = true; m.rot = Math.atan2(dxp, dzp); m.moving = true;
+    if (petStuck(m, dt, dp)) teleportPet(m, p.x, p.y, p.z);
+  } else { m.stuckN = 0; m.lastGoalD = undefined; }
 }
 function wolfAI(m, dt, s) {
   m.biteCd = Math.max(0, m.biteCd - dt);
   const dxp = p.x - m.x, dzp = p.z - m.z, dp = Math.hypot(dxp, dzp);
   if (m.tamed) { petAI(m, dt, s, dxp, dzp, dp); return; }
+  // a wild wolf that a pet attacked turns on that pet
+  if (m.grudge && (m.grudge.dying || mobs.indexOf(m.grudge) < 0 || m.grudgeT <= 0)) m.grudge = null;
+  if (m.grudge) {
+    m.grudgeT -= dt;
+    const gr = m.grudge, gx = gr.x - m.x, gz = gr.z - m.z, gd = Math.hypot(gx, gz);
+    if (gd > 30) m.grudge = null;
+    else {
+      m.chasing = true;
+      m.rot = Math.atan2(gx, gz);
+      m.moving = gd > 1.2;
+      if (gd < 1.7 && Math.abs(gr.y - m.y) < 1.8 && m.biteCd <= 0) { m.biteCd = 1; biteMob(m, gr, s.dmg); }
+      return;
+    }
+  }
   // a wild wolf that smells dropped meat calms down and runs to eat it; three pieces win it over
+  const hasPet = mobs.some(o => o.tamed && !o.dying);
   const meat = meatNear(m, 7);
-  if (meat) {
+  if (meat && hasPet && performance.now() - petToastAt > 4000) {
+    // you already have a pet wolf, so wild wolves just ignore the meat
+    petToastAt = performance.now();
+    toast('You can only have one pet wolf at a time.');
+  }
+  if (meat && !hasPet) {
     m.calm = 12; m.aggro = 0;
     const mx = meat.x - m.x, mz = meat.z - m.z, md = Math.hypot(mx, mz);
     m.chasing = true;
@@ -2067,11 +2216,11 @@ function breakBlock(r) {
     drop = 0;
   }
   let qty = 1;
-  if (r.b >= 9 && r.b <= 11) {
+  if (LEAF_SEED[r.b]) {
     // leaves sometimes drop sticks or seeds for the same kind of tree
     const roll = Math.random();
     if (roll < 0.15) { drop = 100; qty = 1 + Math.floor(Math.random() * 2); }
-    else if (roll < 0.27) drop = 121 + (r.b - 9);
+    else if (roll < 0.27) drop = LEAF_SEED[r.b];
   }
   if (isPlant(r.b)) removeSaplingAt(x, y, z);
   setBlock(x, y, z, 0);
@@ -2373,6 +2522,9 @@ addEventListener('gamepadconnected', () => { if (!active()) toast('Controller co
 // ================= Planting seeds and growing trees =================
 let saplings = []; // {x, y, z, t (0 oak, 1 birch, 2 spruce), at (the time it is ready to grow)}
 let sapTimer = 0;
+const LEAF_SEED = { 9: 121, 10: 122, 11: 123, 27: 124 }; // which seeds each kind of leaves can drop
+const PLANT_TYPE = { 23: 0, 24: 1, 25: 2, 29: 3 };       // sapling block -> tree kind (0 oak, 1 birch, 2 spruce, 3 jungle)
+const SEED_OF = [121, 122, 123, 124];
 function removeSaplingAt(x, y, z) {
   for (let i = saplings.length - 1; i >= 0; i--) {
     const s = saplings[i];
@@ -2382,24 +2534,26 @@ function removeSaplingAt(x, y, z) {
 // right-click the top of grass or dirt with seeds in hand
 function plantSeed(r, id) {
   const t = r.prev;
-  if (!t || (r.b !== 1 && r.b !== 2)) { toast('Seeds only grow on grass or dirt.'); return; }
+  if (!t || (r.b !== 1 && r.b !== 2 && r.b !== 31)) { toast('Seeds only grow on grass or dirt.'); return; }
   if (t[0] !== r.hit[0] || t[2] !== r.hit[2] || t[1] !== r.hit[1] + 1) { toast('Plant seeds on the top of the ground.'); return; }
   if (getBlock(t[0], t[1], t[2]) !== 0) return;
   const kind = ITEMS[id].plant;
   setBlock(t[0], t[1], t[2], kind);
-  saplings.push({ x: t[0], y: t[1], z: t[2], t: kind - 23, at: worldTime + 40 + Math.random() * 40 });
+  saplings.push({ x: t[0], y: t[1], z: t[2], t: PLANT_TYPE[kind], at: worldTime + 40 + Math.random() * 40 });
   take(id, 1);
 }
 // turn a sapling into a full tree (gx, gy, gz is the ground block under it)
 function growTree(gx, gy, gz, type) {
-  const th = 4 + Math.floor(Math.random() * 3);
-  const logId = [6, 7, 8][type], leafId = [9, 10, 11][type];
+  const th = type === 3 ? 8 + Math.floor(Math.random() * 5) : 4 + Math.floor(Math.random() * 3);
+  const logId = [6, 7, 8, 26][type], leafId = [9, 10, 11, 27][type];
   for (let y = gy + 1; y <= gy + th; y++) {
     const b = getBlock(gx, y, gz);
     if (b !== 0 && !isPlant(b)) return false; // something is in the way
   }
   const cells = []; // [x, y, z, block, onlyIntoEmptySpace]
-  if (type === 2) {
+  if (type === 3) {
+    for (const jc of jungleTreeCells(th)) if (jc[3] === 27) cells.push([gx + jc[0], gy + jc[1], gz + jc[2], 27, true]);
+  } else if (type === 2) {
     for (let dy = 0; dy < th; dy++) {
       const y = gy + th + 1 - dy;
       const rr = dy === 0 ? 0 : (dy < 3 ? 1 : 2);
@@ -2450,9 +2604,9 @@ function updateSaplings(dt) {
     if (!chunks.get(ck(s.x >> 4, s.z >> 4))) continue; // wait until that area is loaded
     if (!isPlant(getBlock(s.x, s.y, s.z))) { saplings.splice(i, 1); continue; } // it was dug up or built over
     const ground = getBlock(s.x, s.y - 1, s.z);
-    if (ground !== 1 && ground !== 2) { // the ground was dug out from under it
+    if (ground !== 1 && ground !== 2 && ground !== 31) { // the ground was dug out from under it
       setBlock(s.x, s.y, s.z, 0);
-      dropItem(121 + s.t, s.x + 0.5, s.y + 0.5, s.z + 0.5, { vy: 3, delay: 0.5 });
+      dropItem(SEED_OF[s.t], s.x + 0.5, s.y + 0.5, s.z + 0.5, { vy: 3, delay: 0.5 });
       saplings.splice(i, 1);
       continue;
     }
@@ -2521,7 +2675,7 @@ function createWorld(name) {
     id: 'w' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36),
     name: name && name.trim() ? name.trim().slice(0, 24) : 'World ' + n,
     seed: 1 + Math.floor(Math.random() * 2000000000),
-    created: Date.now(), played: Date.now(), time: DAY_LENGTH * 0.05
+    created: Date.now(), played: Date.now(), time: DAY_LENGTH * 0.05, gen: 2
   };
   list.push({ id: rec.id, name: rec.name, created: rec.created, played: rec.played });
   writeIndex(list);
@@ -2535,7 +2689,7 @@ function deleteWorld(id) {
 function saveWorld(manual) {
   if (!cur || !inGame) return;
   const rec = {
-    id: cur.id, name: cur.name, seed: cur.seed, created: cur.created, played: Date.now(), time: worldTime,
+    id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
     health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: invSlots, equipped: equipped, edits: packEdits(), saplings: saplings,
     pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp }))
@@ -2566,6 +2720,7 @@ function resetWorldState() {
   panelOpen = false; panelEl.style.display = 'none';
   leftDown = false; mining = null; crack.visible = false;
   dead = false; deathEl.style.display = 'none'; saplings = [];
+  wasRain = null; mist = 0;
   for (let i = particles.length - 1; i >= 0; i--) scene.remove(particles[i].mesh);
   particles.length = 0;
   pad.playing = false; pad.sprint = false;
@@ -2588,6 +2743,7 @@ function startWorld(rec) {
   resetWorldState();
   cur = rec;
   SEED = rec.seed;
+  RAIN_ON = (rec.gen || 1) >= 2; // rainforests only in worlds made with this version
   worldTime = rec.time || 0;
   unpackEdits(rec.edits);
   saplings = rec.saplings || [];
@@ -2717,6 +2873,8 @@ stars.frustumCulled = false;
 scene.add(stars);
 
 const SKY_DAY = [0x87, 0xce, 0xeb], SKY_NIGHT = [0x07, 0x0b, 0x1c], SKY_GLOW = [0xf0, 0x90, 0x5a], SKY_CAVE = [0x10, 0x15, 0x1c];
+const SKY_MIST = [0x8f, 0xb0, 0xa2];
+let mist = 0, wasRain = null;
 function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
 function timeOfDay() { return (worldTime % DAY_LENGTH) / DAY_LENGTH; } // 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight
 function updateDayNight(dt) {
@@ -2730,8 +2888,16 @@ function updateDayNight(dt) {
   const ch = chunks.get(ck(fx >> 4, fz >> 4));
   const surf = ch ? ch.top[(fx & 15) + CH * (fz & 15)] : p.y;
   const expo = 1 - Math.max(0, Math.min(1, (surf - p.y - 3) / 6));
+  // the rainforest is humid: the air gets misty and the sky a little greener
+  const inRain = isRain(fx, fz);
+  if (wasRain === null) wasRain = inRain;
+  else if (inRain !== wasRain) { wasRain = inRain; if (inRain) toast('Entering the Rainforest'); }
+  mist += ((inRain ? 1 : 0) - mist) * Math.min(1, dt * 0.8 + (dt === 0 ? 1 : 0));
+  scene.fog.near = RENDER * CH * (0.45 - 0.2 * mist);
+  scene.fog.far = RENDER * CH * (0.92 - 0.25 * mist);
   let sky = mix(SKY_NIGHT, SKY_DAY, dayF);
   sky = mix(sky, SKY_GLOW, glow * 0.5);
+  sky = mix(sky, SKY_MIST, mist * 0.3 * dayF);
   sky = mix(SKY_CAVE, sky, expo);
   scene.background.setRGB(sky[0] / 255, sky[1] / 255, sky[2] / 255);
   scene.fog.color.setRGB(sky[0] / 255, sky[1] / 255, sky[2] / 255);
@@ -2801,7 +2967,7 @@ function loop(now) {
       fps = Math.round(frames / fpsTimer); frames = 0; fpsTimer = 0;
       let n = 0;
       for (const c of chunks.values()) if (c.meshed) n++;
-      infoEl.textContent = clockText() + '   FPS ' + fps + '   Chunks ' + n + '   Animals ' + mobs.length + '\nX ' + Math.floor(p.x) + '  Y ' + Math.floor(p.y) + '  Z ' + Math.floor(p.z);
+      infoEl.textContent = clockText() + (isRain(Math.floor(p.x), Math.floor(p.z)) ? '  Rainforest' : '') + '   FPS ' + fps + '   Chunks ' + n + '   Animals ' + mobs.length + '\nX ' + Math.floor(p.x) + '  Y ' + Math.floor(p.y) + '  Z ' + Math.floor(p.z);
     }
   }
   requestAnimationFrame(loop);
