@@ -85,7 +85,7 @@
   .topRow{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin:2px 0 8px}
   .armorCol{display:flex;flex-direction:column;gap:3px}
   .previewCol{text-align:center;font-size:12px;color:#ccc}
-  .previewCol canvas{width:96px;height:144px;image-rendering:pixelated;background:rgba(0,0,0,.3);border-radius:6px;display:block;margin-bottom:2px}
+  .previewCol canvas{width:96px;height:192px;image-rendering:pixelated;background:rgba(0,0,0,.3);border-radius:6px;display:block;margin-bottom:2px}
   .craftCol{display:flex;flex-direction:column;gap:4px}
   .craftRow{display:flex;align-items:center;gap:8px}
   .cgrid{display:grid;gap:3px}
@@ -112,6 +112,14 @@
   #chatLog{position:fixed;left:10px;bottom:150px;max-width:min(460px,70vw);pointer-events:none;color:#fff;font-size:14px;text-shadow:1px 1px 2px #000;z-index:35}
   #chatLog .cl{background:rgba(0,0,0,.45);padding:2px 8px;margin-top:2px;border-radius:3px;transition:opacity .8s;word-wrap:break-word}
   #chatInput{display:none;position:fixed;left:10px;bottom:118px;width:min(460px,70vw);box-sizing:border-box;padding:6px 8px;border-radius:5px;border:1px solid #888;background:rgba(0,0,0,.75);color:#fff;font-size:15px;z-index:36}
+  #menu #mSkin{width:min(560px,96vw)}
+  .skRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;margin:6px 0;font-size:13px}
+  .skb{padding:8px 12px;border-radius:6px;border:2px solid #555;background:#2a2a2a;color:#fff;font-size:14px;cursor:pointer}
+  .skb.on{border-color:#ffd54a;background:#444}
+  #skCanvas{touch-action:none;background:#222;border-radius:6px;max-width:100%;cursor:crosshair;margin:6px auto;display:block}
+  .skPal{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin:6px 0}
+  .skPal button{width:30px;height:30px;border:2px solid #555;border-radius:4px;padding:0;cursor:pointer}
+  .skPal button.on{border-color:#fff}
   #heldIcon{position:fixed;pointer-events:none;z-index:70;display:none;width:36px;height:36px}
   #death{position:fixed;inset:0;z-index:58;display:none;align-items:center;justify-content:center;background:rgba(120,0,0,.6);color:#fff}
   .dbox{width:min(420px,90vw);text-align:center}
@@ -160,6 +168,7 @@
     <div class="newRow"><input id="mpName" maxlength="14" placeholder="Your name"></div>
     <button class="big" id="btnSingle">Single Player</button>
     <button class="big" id="btnMulti">Multiplayer</button>
+    <button class="big alt" id="btnSkin">Customize Character</button>
     <div class="note" id="multiNote"></div>
     <div class="note small">Worlds are saved in this browser, on this computer.</div>
   </div>
@@ -179,6 +188,18 @@
     <div id="hostList"></div>
     <button class="big" id="btnHostNew">Host a new world</button>
     <button class="big alt" id="btnMpBack">Back</button>
+  </div>
+  <div class="box" id="mSkin" style="display:none">
+    <h2>Your Character</h2>
+    <div class="skRow" id="skTabs"></div>
+    <canvas id="skCanvas" width="224" height="448"></canvas>
+    <div class="skRow" id="skTools"></div>
+    <div class="skPal" id="skPal"></div>
+    <div class="skRow"><span>Any color:</span><input type="color" id="skColor" value="#3a7ad0"></div>
+    <div class="skRow" id="skActs"></div>
+    <div class="note" id="skNote">Draw with the mouse or your finger. Import a picture, or a Minecraft skin (64 x 64), with the Import button. Controller: D-pad or left stick moves, A paints, X changes tool, Y changes view, LB and RB change color, View is undo, B is Done.</div>
+    <button class="big" id="btnSkinDone">Done</button>
+    <input type="file" id="skFile" accept="image/*" style="display:none">
   </div>
 </div>
 <div id="death">
@@ -211,7 +232,8 @@ const WOLF_ATTACKS = true, WOLF_AGGRO = 5;
 const FOREST_DENSITY = 0.018, SPARSE_DENSITY = 0.003;
 // Rainforest: bigger JUNGLE_DENSITY = thicker jungle.
 const JUNGLE_DENSITY = 0.028;
-const MAX_TOUCANS = 3, TOUCAN_CHANCE = 0.08; // toucans are rare. Bigger numbers = more toucans.
+const MAX_TOUCANS = 2, TOUCAN_CHANCE = 0.04, TOUCAN_AGGRO = 14; // toucans are rare, and only go after you when you are within TOUCAN_AGGRO blocks
+const MILK_REGROW = 45; // seconds before a cow has milk again
 const TOUCANS_ATTACK = true; // rainforest toucans always attack. Set to false to make them harmless.
 let RAIN_ON = true; // rainforests only appear in worlds made with this version, so older worlds keep their terrain
 
@@ -502,7 +524,10 @@ const ITEMS = {
   32:{n:'Furnace',c:0x808080,b:1,t:39}, 33:{n:'Glass',c:0xbfe8f5,b:1,t:38},
   125:{n:'Steak',k:'cooked',kc:'#7a3b1e',dc:0x7a3b1e}, 126:{n:'Cooked Porkchop',k:'cooked',kc:'#d49a6a',dc:0xd49a6a},
   127:{n:'Cooked Mutton',k:'cooked',kc:'#94512e',dc:0x94512e}, 128:{n:'Cooked Chicken',k:'cooked',kc:'#d9a050',dc:0xd9a050},
-  129:{n:'Cooked Fish',k:'cfish',kc:'#c8905a',dc:0xc8905a}
+  129:{n:'Cooked Fish',k:'cfish',kc:'#c8905a',dc:0xc8905a},
+  130:{n:'Bucket',k:'bucket',kc:'#c8c8c8',dc:0xc8c8c8}, 131:{n:'Glass Bottle',k:'bottle',kc:'#cfe8f0',dc:0xcfe8f0},
+  132:{n:'Milk Bucket',k:'milkbucket',kc:'#c8c8c8',dc:0xf4f4f4}, 133:{n:'Bottle of Milk',k:'milkbottle',kc:'#cfe8f0',dc:0xf4f4f4},
+  134:{n:'Raw Iron',k:'raw',kc:'#d8a888',dc:0xd8a888}, 135:{n:'Raw Copper',k:'raw',kc:'#d27a4a',dc:0xd27a4a}, 136:{n:'Raw Gold',k:'raw',kc:'#f2d23a',dc:0xf2d23a}
 };
 
 // Tools: pickaxe, axe, sword in six materials (ids 200+)
@@ -548,17 +573,18 @@ const BI = {
   6:{h:2,tool:'axe',d:6}, 7:{h:2,tool:'axe',d:7}, 8:{h:2,tool:'axe',d:8},
   9:{h:0.3,d:0}, 10:{h:0.3,d:0}, 11:{h:0.3,d:0},
   12:{h:1.6,tool:'axe',d:12}, 13:{h:1.6,tool:'axe',d:13}, 14:{h:1.6,tool:'axe',d:14}, 15:{h:1.8,tool:'axe',d:15},
-  16:{h:3.5,tool:'pick',d:111,minTier:2},
+  16:{h:3.5,tool:'pick',d:134,minTier:2},
   17:{h:0.6,d:17}, 18:{h:0.6,d:18}, 19:{h:0.6,d:19},
-  20:{h:3.2,tool:'pick',d:114,minTier:2},
-  21:{h:3.8,tool:'pick',d:115,minTier:3},
+  20:{h:3.2,tool:'pick',d:135,minTier:2},
+  21:{h:3.8,tool:'pick',d:136,minTier:3},
   22:{h:4.5,tool:'pick',d:116,minTier:3},
   23:{h:0.05,d:121}, 24:{h:0.05,d:122}, 25:{h:0.05,d:123},
   26:{h:2,tool:'axe',d:26}, 27:{h:0.3,d:0}, 28:{h:1.6,tool:'axe',d:28}, 29:{h:0.05,d:124}, 30:{h:0.05,d:0}, 31:{h:0.9,d:2}, 32:{h:2.2,tool:'pick',d:32}, 33:{h:0.4,d:33}
 };
-const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2, 125: 8, 126: 8, 127: 6, 128: 6, 129: 5 };
+const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2, 125: 8, 126: 8, 127: 6, 128: 6, 129: 5, 132: 4, 133: 3 };
+const EAT_RETURN = { 132: 130, 133: 131 }; // drinking milk gives the empty bucket or bottle back
 // Furnace: what it can smelt or cook (what goes in -> what comes out), how many seconds each fuel burns, and seconds per item
-const SMELT = { 4: 33, 103: 125, 104: 126, 105: 127, 106: 128, 112: 129 };
+const SMELT = { 4: 33, 103: 125, 104: 126, 105: 127, 106: 128, 112: 129, 134: 111, 135: 114, 136: 115 }; // sand -> glass, raw food -> cooked, raw ore -> ingots
 const FUEL = { 6: 24, 7: 24, 8: 24, 26: 24, 12: 12, 13: 12, 14: 12, 28: 12, 100: 4 };
 const COOK_TIME = 8;
 
@@ -1043,6 +1069,7 @@ let furnaces = {};        // 'x,y,z' -> { inp, fuel, out, burn, burnMax, cook }
 let curFurnaceKey = null; // the furnace whose screen is open
 let furnUI = null;        // the progress bars on the furnace screen
 let bookOpen = false;     // is the recipe book showing?
+let skinOpen = false;     // is the character editor showing?
 function stackClick(arr, i, secondary) {
   const s = arr[i];
   if (!held) {
@@ -1174,6 +1201,8 @@ addLess('Oak Planks', 12, 4, [6]); addLess('Birch Planks', 13, 4, [7]); addLess(
 addShaped('Sticks', 100, 4, ['P', 'P'], { P: PL });
 addShaped('Crafting Table', 15, 1, ['PP', 'PP'], { P: PL });
 addShaped('Furnace', 32, 1, ['SSS', 'S S', 'SSS'], { S: 3 });
+addShaped('Bucket', 130, 1, ['I I', ' I '], { I: 111 });       // 3 iron ingots in a V
+addShaped('Glass Bottle', 131, 3, ['G G', ' G '], { G: 33 });  // 3 glass in a V makes 3 bottles
 addShaped('Shears', 119, 1, [' I', 'I '], { I: 111 });
 addLess('String', 118, 3, [117, 117]);
 addLess('Fishing Rod', 120, 1, [100, 100, 118, 118]);
@@ -1361,6 +1390,22 @@ function drawKind(cx, k, col) {
     R(3, 6, 8, 5, col); R(11, 5, 3, 2, col); R(11, 10, 3, 2, col); R(5, 5, 4, 1, col);
     P(4, 7, '#222'); for (let i = 0; i < 3; i++) P(6 + i * 2, 8, 'rgba(0,0,0,0.4)');
   }
+  else if (k === 'bucket' || k === 'milkbucket') {
+    R(3, 3, 1, 1, '#777777'); R(12, 3, 1, 1, '#777777'); R(4, 2, 8, 1, '#777777');
+    R(3, 4, 10, 1, '#9a9a9a'); R(4, 5, 8, 2, col); R(5, 7, 6, 3, col); R(6, 10, 4, 2, col);
+    R(4, 5, 1, 2, lite); R(5, 7, 1, 3, lite); R(6, 12, 4, 1, dark);
+    if (k === 'milkbucket') R(4, 5, 8, 1, '#fafafa');
+  }
+  else if (k === 'bottle' || k === 'milkbottle') {
+    R(6, 2, 4, 1, '#8a6a35'); R(7, 3, 2, 3, col); R(5, 6, 6, 8, col); R(6, 5, 4, 1, col);
+    R(5, 6, 1, 8, 'rgba(255,255,255,0.7)'); R(10, 7, 1, 7, 'rgba(0,0,0,0.18)'); R(6, 13, 4, 1, 'rgba(0,0,0,0.2)');
+    if (k === 'milkbottle') R(6, 8, 4, 5, '#fafafa');
+  }
+  else if (k === 'raw') {
+    R(4, 5, 8, 7, '#8a8a8a'); R(3, 6, 10, 5, '#8a8a8a'); R(5, 4, 6, 1, '#8a8a8a');
+    R(4, 5, 5, 1, 'rgba(255,255,255,0.25)');
+    for (const q of [[5, 6], [9, 7], [6, 9], [10, 10], [4, 10]]) { R(q[0], q[1], 2, 2, col); }
+  }
   else if (k === 'leather') {
     const base = '#9a5a2a', edge = '#5e3515', hi = '#bd7c44', patch = '#84491f', stitch = '#ead6a6';
     R(4, 2, 8, 1, edge); R(4, 13, 8, 1, edge); R(2, 4, 1, 8, edge); R(13, 4, 1, 8, edge);
@@ -1497,6 +1542,13 @@ function craftCellBtn(i) {
   b.title = stackTitle(s, 'Crafting slot');
   fillSlotBtn(b, s);
   tagBtn(b, (sh) => gridClick(i, false, sh), () => gridClick(i, true, false), () => gridClick(i, false, true));
+  // controller A: put down one item at a time (or pick up what is there); swap if it is a different item
+  b.onPad = () => {
+    const c = curGrid()[i];
+    if (held && c && (c.g || held.g || c.id !== held.id)) gridClick(i, false, false);
+    else if (held) gridClick(i, true, false);
+    else gridClick(i, false, false);
+  };
   return b;
 }
 function resultBtn() {
@@ -1511,24 +1563,25 @@ function resultBtn() {
   tagBtn(b, (sh) => { takeCraft(sh); }, () => { takeCraft(false); }, () => { takeCraft(true); });
   return b;
 }
-// a little picture of you, wearing your armor
+// a little picture of you (your own skin if you made one), wearing your armor
 function drawPlayerPreview(cv) {
   const cx = cv.getContext('2d');
+  const px = mySkin || defaultSkin(myName());
+  cx.clearRect(0, 0, 32, 64);
+  for (const pt of SKIN_VIEWS.front.parts) {
+    const r = SK[pt[0]][pt[1]];
+    for (let j = 0; j < r[3]; j++) for (let i = 0; i < r[2]; i++) {
+      const o = ((r[1] + j) * 64 + r[0] + i) * 4;
+      cx.fillStyle = 'rgb(' + px[o] + ',' + px[o + 1] + ',' + px[o + 2] + ')';
+      cx.fillRect((pt[2] + i) * 2, (pt[3] + j) * 2, 2, 2);
+    }
+  }
   const R = (x, y, w, h, c) => { cx.fillStyle = c; cx.fillRect(x, y, w, h); };
-  const shirt = ['#3a7ad0', '#d05050', '#50b060', '#d0a030', '#9050c0', '#40b0b0', '#e07a30'][hashStr(myName()) % 7];
-  const skin = '#e0b090', hair = '#4a3220', pants = '#2a3a6a';
   const col = (slot) => (equipped[slot] && ITEMS[equipped[slot].id].kc) || '#999999';
-  cx.clearRect(0, 0, 32, 48);
-  R(9, 28, 6, 16, pants); R(17, 28, 6, 16, pants);                       // legs
-  R(8, 14, 16, 14, shirt); R(4, 14, 4, 14, shirt); R(24, 14, 4, 14, shirt); // body and arms
-  R(4, 26, 4, 3, skin); R(24, 26, 4, 3, skin);                            // hands
-  R(10, 2, 12, 12, skin); R(10, 2, 12, 4, hair);                          // head
-  R(12, 8, 2, 2, '#222222'); R(18, 8, 2, 2, '#222222');                  // eyes
-  R(14, 11, 4, 1, '#a0604a');                                             // mouth
-  if (equipped.boots) { const c = col('boots'); R(9, 40, 6, 4, c); R(17, 40, 6, 4, c); }
-  if (equipped.legs) { const c = col('legs'); R(9, 28, 6, 12, c); R(17, 28, 6, 12, c); R(8, 26, 16, 3, c); }
-  if (equipped.chest) { const c = col('chest'); R(8, 14, 16, 12, c); R(4, 14, 4, 9, c); R(24, 14, 4, 9, c); }
-  if (equipped.helmet) { const c = col('helmet'); R(9, 1, 14, 5, c); R(9, 1, 3, 12, c); R(20, 1, 3, 12, c); }
+  if (equipped.boots) { const c = col('boots'); R(8, 58, 8, 6, c); R(16, 58, 8, 6, c); }
+  if (equipped.legs) { const c = col('legs'); R(8, 40, 8, 18, c); R(16, 40, 8, 18, c); R(8, 34, 16, 6, c); }
+  if (equipped.chest) { const c = col('chest'); R(8, 16, 16, 20, c); R(0, 16, 8, 14, c); R(24, 16, 8, 14, c); }
+  if (equipped.helmet) { const c = col('helmet'); R(7, 0, 18, 6, c); R(7, 0, 3, 16, c); R(22, 0, 3, 16, c); }
 }
 function furnSlotBtn(kind, s) {
   const b = document.createElement('button'); b.className = 'gs';
@@ -1630,7 +1683,7 @@ function renderPanel() {
       ac.appendChild(b);
     });
     const pv = document.createElement('div'); pv.className = 'previewCol';
-    const cv = document.createElement('canvas'); cv.width = 32; cv.height = 48;
+    const cv = document.createElement('canvas'); cv.width = 32; cv.height = 64;
     drawPlayerPreview(cv);
     pv.appendChild(cv);
     const nm = document.createElement('div'); nm.textContent = myName(); pv.appendChild(nm);
@@ -1659,7 +1712,9 @@ function renderPanel() {
   const hl = document.createElement('div'); hl.id = 'heldLine';
   hl.textContent = held
     ? 'Holding ' + ITEMS[held.id].n + (held.g ? '' : ' x' + held.n) + '. Click a slot to put it down.'
-    : 'Click an item to pick it up, then click a slot to put it down. Right-click takes half. Shift-click moves it.';
+    : ((typeof pad !== 'undefined' && pad.connected)
+      ? 'Controller: A picks up a stack. On the crafting grid A puts down one item at a time; on other slots it puts down the whole stack. X takes half or puts down one. RB moves a stack.'
+      : 'Click an item to pick it up, then click a slot to put it down. Right-click takes half. Shift-click moves it.');
   invList.appendChild(hl);
   if (held) {
     const row = document.createElement('div'); row.className = 'row';
@@ -1780,6 +1835,7 @@ function eat(id) {
   if (hunger >= 20) { toast('You are not hungry.'); return; }
   hunger = Math.min(20, hunger + FOOD[id]);
   take(id, 1);
+  if (EAT_RETURN[id]) giveItem(EAT_RETURN[id], 1);
   refreshStats();
 }
 
@@ -1888,7 +1944,7 @@ const net = {
   mode: 'off',            // 'off', 'host' or 'guest'
   players: {},            // host: the friends who joined (their positions)
   others: {},             // guest: everyone else in the game
-  avatars: {}, puppets: {}, deadNids: {}, conns: {}, hostConn: null, peer: null, pending: null,
+  avatars: {}, skins: {}, puppets: {}, deadNids: {}, conns: {}, hostConn: null, peer: null, pending: null,
   outBlocks: [], applying: false, code: '', name: 'Player', myId: '', nid: 0,
   t: 0, lastPs: 0, lastMobs: 0, lastTime: 0, lastP: 0
 };
@@ -2349,7 +2405,7 @@ function updateToucan(m, dt) {
   const np = TOUCANS_ATTACK ? nearestPlayer(m.x, m.y, m.z) : null;
   if (m.backoff > 0) m.backoff -= dt;
   let vx = 0, vy = 0, vz = 0;
-  if (np && np.dist < 70) {
+  if (np && (np.dist < TOUCAN_AGGRO || (m.chasing && np.dist < TOUCAN_AGGRO * 1.5))) {
     // always goes after the nearest player, swooping in to bite and then flapping back
     const tx = np.x - m.x, ty = np.y + 1.1 - (m.y + 0.15), tz = np.z - m.z;
     const d3 = Math.hypot(tx, ty, tz) || 1;
@@ -2552,6 +2608,7 @@ function wolfAI(m, dt, s) {
 
 function updateMob(m, dt) {
   const s = m.spec;
+  if (m.milkCd > 0) m.milkCd -= dt;
 
   // Death animation: tip over, then shrink away
   if (m.dying) {
@@ -2698,7 +2755,7 @@ function damageMob(m, dmg, fx, fz, killer) {
   m.kx = ax / l * 6; m.kz = az / l * 6;
   m.vy = 5; m.onGround = false;
   m.fleeX = fx; m.fleeZ = fz;
-  if (m.spec.flying) m.backoff = 1.2; // a toucan that is hit flutters back for a moment, then comes at you again
+  if (m.spec.flying) { m.backoff = 1.2; m.chasing = true; } // a toucan that is hit flutters back for a moment, then comes at you again
   if (m.spec.hostile && (WOLF_ATTACKS || m.spec.flying)) m.aggro = 10; else m.panic = 4;
   m.flash = 0.25;
   if (m.hp <= 0) { m.killer = killer; startDeath(m); }
@@ -3034,6 +3091,24 @@ function attackDown() {
   }
 }
 function attackUp() { leftDown = false; mining = null; crack.visible = false; }
+// ---- milk: right-click a cow with a bucket or a glass bottle ----
+function giveMilk(id) {
+  take(id, 1);
+  giveItem(id === 130 ? 132 : 133, 1);
+  toast('Milked the cow!');
+}
+function milkCow(m, id) {
+  if (m.puppet) { netSend({ t: 'milk', id: m.nid, item: id }); return false; } // on a friend's world the host decides
+  if (m.milkCd > 0) { toast('This cow has no milk right now. Try again in a little while.'); return false; }
+  m.milkCd = MILK_REGROW;
+  giveMilk(id);
+  return true;
+}
+function tryMilk(id, r) {
+  const m = mobAtRay(r ? Math.min(4, r.t) : 4);
+  if (!m || m.type !== 'cow' || m.dying) { toast(id === 130 ? 'Right-click a cow with the bucket to milk it.' : 'Right-click a cow with the bottle to milk it.'); return; }
+  milkCow(m, id);
+}
 function useDown() {
   const r = raycastBlocks(6);
   if (r && r.b === 15) { openPanel('table'); return; }
@@ -3047,6 +3122,7 @@ function useDown() {
     }
     return;
   }
+  if (id === 130 || id === 131) { tryMilk(id, r); return; }
   if (id === 120) { castOrReel(); return; }
   if (ITEMS[id] && ITEMS[id].plant) { if (r) plantSeed(r, id); return; }
   if (FOOD[id]) { eat(id); return; }
@@ -3136,6 +3212,32 @@ function rumble(ms, strong) {
 }
 let padPrev = [], padFocus = 0, padRepeat = 0, padWas = false;
 // move between the buttons of a screen with the D-pad or left stick, A presses
+function padRect(b) {
+  if (!b || !b.getBoundingClientRect) return null;
+  const r = b.getBoundingClientRect();
+  return r && (r.width > 0 || r.height > 0) ? r : null;
+}
+// the D-pad moves to the nearest button in that direction. Returns undefined if the page cannot say where the buttons are.
+function padSpatial(btns, cur, dx, dy) {
+  const a = padRect(btns[cur]);
+  if (!a) return undefined;
+  const ax0 = a.left + a.width / 2, ay0 = a.top + a.height / 2;
+  let best = -1, bestScore = Infinity;
+  for (let i = 0; i < btns.length; i++) {
+    if (i === cur) continue;
+    const r = padRect(btns[i]);
+    if (!r) continue;
+    const ddx = r.left + r.width / 2 - ax0, ddy = r.top + r.height / 2 - ay0;
+    if (dx > 0 && ddx < 4) continue;
+    if (dx < 0 && ddx > -4) continue;
+    if (dy > 0 && ddy < 4) continue;
+    if (dy < 0 && ddy > -4) continue;
+    const along = dx ? Math.abs(ddx) : Math.abs(ddy), across = dx ? Math.abs(ddy) : Math.abs(ddx);
+    const score = along + across * 3;
+    if (score < bestScore) { bestScore = score; best = i; }
+  }
+  return best;
+}
 function padNavRoot(root, cur, pressed, ax, dt) {
   const btns = Array.prototype.slice.call(root.querySelectorAll('button:not(:disabled)')).filter(b => b.offsetParent !== null);
   padRepeat -= dt;
@@ -3175,7 +3277,8 @@ function pollPad(dt) {
 
   // title screen and death screen: D-pad or left stick moves between buttons, A presses
   if (menuOpen || dead) {
-    padNavRoot(menuOpen ? menuEl : deathEl, cur, pressed, ax, dt);
+    if (skinOpen && !dead) skinPad(cur, pressed, ax, dt);
+    else padNavRoot(menuOpen ? menuEl : deathEl, cur, pressed, ax, dt);
     padPrev = cur;
     return;
   }
@@ -3214,7 +3317,9 @@ function pollPad(dt) {
     }
     if (btns.length) {
       padFocus = Math.max(0, Math.min(padFocus, btns.length - 1));
-      if (sx || sy) {
+      const spatial = (sx || sy) ? padSpatial(btns, padFocus, sx, sy) : undefined;
+      if (spatial !== undefined) { if (spatial >= 0) padFocus = spatial; }
+      else if (sx || sy) {
         const fb = btns[padFocus];
         const has = (b, k) => !!(b.dataset && b.dataset[k] !== undefined);
         const v = has(fb, 'v') ? Number(fb.dataset.v) : -1;
@@ -3236,7 +3341,7 @@ function pollPad(dt) {
       btns[padFocus].classList.add('padfocus');
       if (sx || sy) btns[padFocus].scrollIntoView({ block: 'nearest' });
       const fb2 = btns[padFocus];
-      if (pressed(0)) fb2.click();
+      if (pressed(0)) { if (fb2.onPad) fb2.onPad(); else fb2.click(); }
       else if (pressed(2) && fb2.onSecondary) fb2.onSecondary();  // X: take half / put down one
       else if (pressed(5) && fb2.onShift) fb2.onShift();          // RB: shift-click
     }
@@ -3552,6 +3657,8 @@ function showMenu(which) {
   document.getElementById('mHome').style.display = which === 'home' ? 'block' : 'none';
   document.getElementById('mWorlds').style.display = which === 'worlds' ? 'block' : 'none';
   document.getElementById('mMulti').style.display = which === 'multi' ? 'block' : 'none';
+  document.getElementById('mSkin').style.display = which === 'skin' ? 'block' : 'none';
+  skinOpen = which === 'skin';
   if (which === 'worlds') renderWorlds();
   if (which === 'multi') { renderHostList(); document.getElementById('mpAs').textContent = 'You will appear as ' + myName() + '. You can change your name on the title screen.'; }
   padFocus = 0;
@@ -3733,6 +3840,397 @@ chatInputEl.addEventListener('keydown', (e) => {
   e.stopPropagation();
 });
 
+// ================= Character skins =================
+// A skin is a 64 x 64 picture in the same layout Minecraft uses, so real Minecraft skins can be imported.
+const SKIN_KEY = 'voxelgame.skin';
+// where each face of each body part lives in the picture: [x, y, width, height]
+const SK = {
+  head: { top: [8, 0, 8, 8], bottom: [16, 0, 8, 8], right: [0, 8, 8, 8], front: [8, 8, 8, 8], left: [16, 8, 8, 8], back: [24, 8, 8, 8] },
+  body: { top: [20, 16, 8, 4], bottom: [28, 16, 8, 4], right: [16, 20, 4, 12], front: [20, 20, 8, 12], left: [28, 20, 4, 12], back: [32, 20, 8, 12] },
+  rarm: { top: [44, 16, 4, 4], bottom: [48, 16, 4, 4], right: [40, 20, 4, 12], front: [44, 20, 4, 12], left: [48, 20, 4, 12], back: [52, 20, 4, 12] },
+  larm: { top: [36, 48, 4, 4], bottom: [40, 48, 4, 4], right: [32, 52, 4, 12], front: [36, 52, 4, 12], left: [40, 52, 4, 12], back: [44, 52, 4, 12] },
+  rleg: { top: [4, 16, 4, 4], bottom: [8, 16, 4, 4], right: [0, 20, 4, 12], front: [4, 20, 4, 12], left: [8, 20, 4, 12], back: [12, 20, 4, 12] },
+  lleg: { top: [20, 48, 4, 4], bottom: [24, 48, 4, 4], right: [16, 52, 4, 12], front: [20, 52, 4, 12], left: [24, 52, 4, 12], back: [28, 52, 4, 12] }
+};
+// what you see (and paint on) from each side: [part, face, x, y] in a picture of the character. Later parts are drawn on top.
+const SKIN_VIEWS = {
+  front: { w: 16, h: 32, parts: [['rleg', 'front', 4, 20], ['lleg', 'front', 8, 20], ['body', 'front', 4, 8], ['rarm', 'front', 0, 8], ['larm', 'front', 12, 8], ['head', 'front', 4, 0]] },
+  back: { w: 16, h: 32, parts: [['lleg', 'back', 4, 20], ['rleg', 'back', 8, 20], ['body', 'back', 4, 8], ['larm', 'back', 0, 8], ['rarm', 'back', 12, 8], ['head', 'back', 4, 0]] },
+  left: { w: 8, h: 32, parts: [['lleg', 'left', 2, 20], ['body', 'left', 2, 8], ['larm', 'left', 2, 8], ['head', 'left', 0, 0]] },
+  right: { w: 8, h: 32, parts: [['rleg', 'right', 2, 20], ['body', 'right', 2, 8], ['rarm', 'right', 2, 8], ['head', 'right', 0, 0]] },
+  top: { w: 8, h: 8, parts: [['head', 'top', 0, 0]] }
+};
+let mySkin = null; // your own skin (64 x 64 x 4 numbers), or null for the plain character
+function newSkin() { const px = new Uint8ClampedArray(64 * 64 * 4); for (let i = 3; i < px.length; i += 4) px[i] = 255; return px; }
+function skinOpaque(px) { for (let i = 3; i < px.length; i += 4) px[i] = 255; return px; } // the unused corners of an imported skin may be see-through
+function skinFill(px, x, y, w, h, c) {
+  for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) { const o = (j * 64 + i) * 4; px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255; }
+}
+function skinEqual(a, b) { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
+// the plain character everyone starts with (the shirt color comes from the name)
+function defaultSkin(name) {
+  const px = newSkin();
+  const n = hashStr(name || '') % 7;
+  const hex = [0x3a7ad0, 0xd05050, 0x50b060, 0xd0a030, 0x9050c0, 0x40b0b0, 0xe07a30][n];
+  const shirt = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+  const skinC = [224, 176, 144], hair = [74, 50, 32], pants = [42, 58, 106], shoe = [30, 30, 40];
+  const F = (part, face, c) => { const r = SK[part][face]; skinFill(px, r[0], r[1], r[2], r[3], c); };
+  for (const f in SK.head) F('head', f, skinC);
+  F('head', 'top', hair); F('head', 'back', hair);
+  skinFill(px, SK.head.front[0], SK.head.front[1], 8, 2, hair);
+  for (const f of ['right', 'left']) skinFill(px, SK.head[f][0], SK.head[f][1], 8, 3, hair);
+  const fr = SK.head.front;
+  skinFill(px, fr[0] + 2, fr[1] + 4, 1, 1, [34, 34, 34]); skinFill(px, fr[0] + 5, fr[1] + 4, 1, 1, [34, 34, 34]);
+  skinFill(px, fr[0] + 3, fr[1] + 6, 2, 1, [160, 96, 74]);
+  for (const f in SK.body) F('body', f, shirt);
+  for (const a of ['rarm', 'larm']) {
+    for (const f in SK[a]) F(a, f, shirt);
+    for (const f of ['front', 'back', 'right', 'left']) skinFill(px, SK[a][f][0], SK[a][f][1] + 9, 4, 3, skinC);
+    F(a, 'bottom', skinC);
+  }
+  for (const l of ['rleg', 'lleg']) {
+    for (const f in SK[l]) F(l, f, pants);
+    for (const f of ['front', 'back', 'right', 'left']) skinFill(px, SK[l][f][0], SK[l][f][1] + 10, 4, 2, shoe);
+    F(l, 'bottom', shoe);
+  }
+  return px;
+}
+// a skin as a short piece of text (runs of the same color are squeezed together), to save it and send it to friends
+function skinEncode(px) {
+  const out = [];
+  let i = 0;
+  while (i < 4096) {
+    const o = i * 4;
+    let n = 1;
+    while (i + n < 4096 && n < 255 && px[(i + n) * 4] === px[o] && px[(i + n) * 4 + 1] === px[o + 1] && px[(i + n) * 4 + 2] === px[o + 2]) n++;
+    out.push(n, px[o], px[o + 1], px[o + 2]);
+    i += n;
+  }
+  let s = '';
+  for (let k = 0; k < out.length; k++) s += String.fromCharCode(out[k]);
+  return btoa(s);
+}
+function skinDecode(str) {
+  try {
+    if (typeof str !== 'string' || !str || str.length > 60000) return null;
+    const s = atob(str);
+    if (s.length % 4) return null;
+    const px = newSkin();
+    let i = 0;
+    for (let k = 0; k < s.length; k += 4) {
+      const n = s.charCodeAt(k);
+      if (!n || i + n > 4096) return null;
+      for (let m = 0; m < n; m++, i++) { const o = i * 4; px[o] = s.charCodeAt(k + 1); px[o + 1] = s.charCodeAt(k + 2); px[o + 2] = s.charCodeAt(k + 3); px[o + 3] = 255; }
+    }
+    return i === 4096 ? px : null;
+  } catch (e) { return null; }
+}
+function skinToCanvas(px) {
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 64;
+  const cx = cv.getContext('2d');
+  const id = cx.createImageData(64, 64);
+  id.data.set(px);
+  cx.putImageData(id, 0, 0);
+  return cv;
+}
+// turn a loaded picture into a skin: a 64 x 64 (or old 64 x 32) Minecraft skin is used as it is; any other picture is painted onto the front of the character
+function skinFromRGBA(w, h, data) {
+  const px = newSkin();
+  const def = defaultSkin('');
+  const useDefault = (x, y) => { const o = (y * 64 + x) * 4; px[o] = def[o]; px[o + 1] = def[o + 1]; px[o + 2] = def[o + 2]; px[o + 3] = 255; };
+  const facePx = (pn, face, fn) => { const r = SK[pn][face]; for (let j = 0; j < r[3]; j++) for (let i = 0; i < r[2]; i++) { const c = fn(i, j); const o = ((r[1] + j) * 64 + r[0] + i) * 4; if (c) { px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255; } else useDefault(r[0] + i, r[1] + j); } };
+  if (w === 64 && (h === 64 || h === 32)) {
+    for (let y = 0; y < h; y++) for (let x = 0; x < 64; x++) { const o = (y * 64 + x) * 4; px[o] = data[o]; px[o + 1] = data[o + 1]; px[o + 2] = data[o + 2]; px[o + 3] = data[o + 3]; }
+    if (h === 32) { // old skins only have the right arm and leg: mirror them to the left side
+      const map = { front: 'front', back: 'back', top: 'top', bottom: 'bottom', left: 'right', right: 'left' };
+      for (const pair of [['rarm', 'larm'], ['rleg', 'lleg']]) for (const f in map) {
+        const a = SK[pair[0]][f], b = SK[pair[1]][map[f]];
+        for (let j = 0; j < a[3]; j++) for (let i = 0; i < a[2]; i++) { const so = ((a[1] + j) * 64 + a[0] + (a[2] - 1 - i)) * 4, d = ((b[1] + j) * 64 + b[0] + i) * 4; px[d] = px[so]; px[d + 1] = px[so + 1]; px[d + 2] = px[so + 2]; px[d + 3] = px[so + 3]; }
+      }
+    } else { // paint the hat, jacket, sleeves and trousers layers on top (source x, y, w, h -> where it goes)
+      for (const L of [[32, 0, 32, 16, 0, 0], [16, 32, 24, 16, 16, 16], [40, 32, 16, 16, 40, 16], [48, 48, 16, 16, 32, 48], [0, 32, 16, 16, 0, 16], [0, 48, 16, 16, 16, 48]]) {
+        for (let j = 0; j < L[3]; j++) for (let i = 0; i < L[2]; i++) {
+          const so = ((L[1] + j) * 64 + L[0] + i) * 4, d = ((L[5] + j) * 64 + L[4] + i) * 4;
+          if (data[so + 3] >= 128) { px[d] = data[so]; px[d + 1] = data[so + 1]; px[d + 2] = data[so + 2]; px[d + 3] = 255; }
+        }
+      }
+    }
+    for (const pn in SK) for (const f in SK[pn]) { // no see-through holes in the parts that are used
+      const r = SK[pn][f];
+      for (let j = 0; j < r[3]; j++) for (let i = 0; i < r[2]; i++) if (px[((r[1] + j) * 64 + r[0] + i) * 4 + 3] < 255) useDefault(r[0] + i, r[1] + j);
+    }
+    return skinOpaque(px);
+  }
+  // any other picture: squash it to the front of the character (16 x 32) and copy it around
+  const view = [];
+  for (let ty = 0; ty < 32; ty++) for (let tx = 0; tx < 16; tx++) {
+    const sx = Math.min(w - 1, Math.floor((tx + 0.5) * w / 16)), sy = Math.min(h - 1, Math.floor((ty + 0.5) * h / 32));
+    const o = (sy * w + sx) * 4;
+    view.push(data[o + 3] < 128 ? null : [data[o], data[o + 1], data[o + 2]]);
+  }
+  const vp = (x, y) => view[y * 16 + x];
+  const dim = c => (c ? [Math.round(c[0] * 0.8), Math.round(c[1] * 0.8), Math.round(c[2] * 0.8)] : null);
+  for (const pt of SKIN_VIEWS.front.parts) {
+    const pn = pt[0], ox = pt[2], oy = pt[3], r = SK[pn].front, pw = r[2], ph = r[3];
+    facePx(pn, 'front', (i, j) => vp(ox + i, oy + j));
+    facePx(pn, 'back', (i, j) => dim(vp(ox + pw - 1 - i, oy + j)));
+    facePx(pn, 'left', (i, j) => dim(vp(ox + pw - 1, oy + j)));
+    facePx(pn, 'right', (i, j) => dim(vp(ox, oy + j)));
+    facePx(pn, 'top', (i, j) => dim(vp(ox + Math.min(pw - 1, Math.floor(i * pw / SK[pn].top[2])), oy)));
+    facePx(pn, 'bottom', (i, j) => dim(vp(ox + Math.min(pw - 1, Math.floor(i * pw / SK[pn].bottom[2])), oy + ph - 1)));
+  }
+  return skinOpaque(px);
+}
+function loadMySkin() { try { mySkin = skinDecode(localStorage.getItem(SKIN_KEY)); } catch (e) { mySkin = null; } }
+loadMySkin();
+
+// ---- the character editor ----
+const skCanvas = document.getElementById('skCanvas');
+const skTabsEl = document.getElementById('skTabs'), skToolsEl = document.getElementById('skTools'), skActsEl = document.getElementById('skActs');
+const skPalEl = document.getElementById('skPal'), skNoteEl = document.getElementById('skNote'), skColorEl = document.getElementById('skColor'), skFileEl = document.getElementById('skFile');
+const SKIN_PALETTE = ['#000000', '#ffffff', '#7f7f7f', '#d03030', '#e07a30', '#e8d030', '#50b060', '#2f7a30', '#40b0b0', '#3a7ad0', '#2a3a6a', '#9050c0', '#e87ab0', '#e0b090', '#8a5a2b', '#4a3220'];
+let skinBuf = null, skinDef = null, skinView = 'front', skinTool = 'pen', skinColor = [58, 122, 208], skinPalIdx = 9, skinUndo = [], skinStroke = false, skinCur = { x: 4, y: 2 }, skinPadRep = 0;
+const skBtns = { views: {}, tools: {}, pal: [] };
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function rgbToHex(c) { return '#' + [c[0], c[1], c[2]].map(v => v.toString(16).padStart(2, '0')).join(''); }
+function skMkBtn(parent, label, fn) {
+  const b = document.createElement('button'); b.className = 'skb'; b.textContent = label;
+  b.addEventListener('click', fn); parent.appendChild(b); return b;
+}
+function skinViewScale() { return skinView === 'top' ? 28 : 14; }
+// which spot of the skin picture is under a spot of the character picture (null if it is empty space)
+function skinMapPixel(view, vx, vy) {
+  const V = SKIN_VIEWS[view];
+  for (let i = V.parts.length - 1; i >= 0; i--) {
+    const pt = V.parts[i], r = SK[pt[0]][pt[1]];
+    const dx = vx - pt[2], dy = vy - pt[3];
+    if (dx >= 0 && dy >= 0 && dx < r[2] && dy < r[3]) return [r[0] + dx, r[1] + dy];
+  }
+  return null;
+}
+function skinDrawEditor() {
+  const cx = skCanvas.getContext('2d');
+  const V = SKIN_VIEWS[skinView], s = skinViewScale();
+  for (let y = 0; y < V.h; y++) for (let x = 0; x < V.w; x++) { cx.fillStyle = ((x + y) & 1) ? '#2c2c2c' : '#363636'; cx.fillRect(x * s, y * s, s, s); }
+  for (const pt of V.parts) {
+    const r = SK[pt[0]][pt[1]];
+    for (let j = 0; j < r[3]; j++) for (let i = 0; i < r[2]; i++) {
+      const o = ((r[1] + j) * 64 + r[0] + i) * 4;
+      cx.fillStyle = 'rgb(' + skinBuf[o] + ',' + skinBuf[o + 1] + ',' + skinBuf[o + 2] + ')';
+      cx.fillRect((pt[2] + i) * s, (pt[3] + j) * s, s, s);
+    }
+  }
+  cx.fillStyle = 'rgba(0,0,0,0.22)';
+  for (let x = 0; x <= V.w; x++) cx.fillRect(Math.min(x * s, V.w * s - 1), 0, 1, V.h * s);
+  for (let y = 0; y <= V.h; y++) cx.fillRect(0, Math.min(y * s, V.h * s - 1), V.w * s, 1);
+  if (pad.connected) { // the controller's cursor
+    cx.fillStyle = '#ffd54a';
+    const x = skinCur.x * s, y = skinCur.y * s;
+    cx.fillRect(x, y, s, 2); cx.fillRect(x, y + s - 2, s, 2); cx.fillRect(x, y, 2, s); cx.fillRect(x + s - 2, y, 2, s);
+  }
+}
+function skinRefresh() {
+  if (!skinBuf) return;
+  const V = SKIN_VIEWS[skinView], s = skinViewScale();
+  skCanvas.width = V.w * s; skCanvas.height = V.h * s;
+  for (const v in skBtns.views) skBtns.views[v].className = 'skb' + (v === skinView ? ' on' : '');
+  for (const t in skBtns.tools) skBtns.tools[t].className = 'skb' + (t === skinTool ? ' on' : '');
+  skBtns.pal.forEach((b, i) => { b.className = i === skinPalIdx ? 'on' : ''; });
+  skinDrawEditor();
+}
+function skinSetView(v) {
+  skinView = v;
+  skinCur = { x: Math.min(skinCur.x, SKIN_VIEWS[v].w - 1), y: Math.min(skinCur.y, SKIN_VIEWS[v].h - 1) };
+  skinRefresh();
+}
+function skinSetTool(t) { skinTool = t; skinRefresh(); }
+function skinSetColor(c, idx) { skinColor = c; skinPalIdx = idx; skColorEl.value = rgbToHex(c); skinRefresh(); }
+function skinPush() { skinUndo.push(skinBuf.slice()); if (skinUndo.length > 20) skinUndo.shift(); }
+function skinUndoStep() { if (skinUndo.length) { skinBuf = skinUndo.pop(); skinRefresh(); } }
+function skinFloodFill(vx, vy) {
+  const V = SKIN_VIEWS[skinView];
+  const m0 = skinMapPixel(skinView, vx, vy);
+  if (!m0) return;
+  const o0 = (m0[1] * 64 + m0[0]) * 4;
+  const tr = skinBuf[o0], tg = skinBuf[o0 + 1], tb = skinBuf[o0 + 2];
+  if (tr === skinColor[0] && tg === skinColor[1] && tb === skinColor[2]) return;
+  const seen = new Uint8Array(V.w * V.h), stack = [[vx, vy]];
+  while (stack.length) {
+    const q = stack.pop(), x = q[0], y = q[1];
+    if (x < 0 || y < 0 || x >= V.w || y >= V.h || seen[y * V.w + x]) continue;
+    seen[y * V.w + x] = 1;
+    const m = skinMapPixel(skinView, x, y);
+    if (!m) continue;
+    const o = (m[1] * 64 + m[0]) * 4;
+    if (skinBuf[o] !== tr || skinBuf[o + 1] !== tg || skinBuf[o + 2] !== tb) continue;
+    skinBuf[o] = skinColor[0]; skinBuf[o + 1] = skinColor[1]; skinBuf[o + 2] = skinColor[2]; skinBuf[o + 3] = 255;
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+}
+// use the current tool on one spot of the character picture
+function skinApply(vx, vy) {
+  const m = skinMapPixel(skinView, vx, vy);
+  if (!m) return false;
+  const o = (m[1] * 64 + m[0]) * 4;
+  if (skinTool === 'pick') { skinSetColor([skinBuf[o], skinBuf[o + 1], skinBuf[o + 2]], -1); return true; }
+  if (skinTool === 'fill') { skinFloodFill(vx, vy); return true; }
+  const c = skinTool === 'erase' ? [skinDef[o], skinDef[o + 1], skinDef[o + 2]] : skinColor;
+  skinBuf[o] = c[0]; skinBuf[o + 1] = c[1]; skinBuf[o + 2] = c[2]; skinBuf[o + 3] = 255;
+  return true;
+}
+function skinPoint(e) {
+  const rc = skCanvas.getBoundingClientRect(), s = skinViewScale();
+  const k = skCanvas.width / (rc.width || skCanvas.width);
+  skinApply(Math.floor((e.clientX - rc.left) * k / s), Math.floor((e.clientY - rc.top) * k / s));
+  skinDrawEditor();
+}
+skCanvas.addEventListener('pointerdown', (e) => {
+  if (!skinBuf) return;
+  e.preventDefault();
+  skinStroke = true; skinPush();
+  try { skCanvas.setPointerCapture(e.pointerId); } catch (er) {}
+  skinPoint(e);
+});
+skCanvas.addEventListener('pointermove', (e) => { if (skinStroke && (skinTool === 'pen' || skinTool === 'erase')) skinPoint(e); });
+addEventListener('pointerup', () => { skinStroke = false; });
+[['front', 'Front'], ['back', 'Back'], ['left', 'Left'], ['right', 'Right'], ['top', 'Top']].forEach(v => { skBtns.views[v[0]] = skMkBtn(skTabsEl, v[1], () => skinSetView(v[0])); });
+[['pen', 'Pencil'], ['fill', 'Fill'], ['pick', 'Pick color'], ['erase', 'Eraser']].forEach(t => { skBtns.tools[t[0]] = skMkBtn(skToolsEl, t[1], () => skinSetTool(t[0])); });
+skMkBtn(skToolsEl, 'Undo', skinUndoStep);
+SKIN_PALETTE.forEach((c, i) => {
+  const b = document.createElement('button'); b.style.background = c; b.title = c;
+  b.addEventListener('click', () => skinSetColor(hexToRgb(c), i));
+  skPalEl.appendChild(b); skBtns.pal.push(b);
+});
+skColorEl.addEventListener('input', () => skinSetColor(hexToRgb(skColorEl.value), -1));
+skMkBtn(skActsEl, 'Import picture', () => skFileEl.click());
+skMkBtn(skActsEl, 'Save as PNG', () => skinSavePng());
+skMkBtn(skActsEl, 'Reset', () => { if (skinBuf) { skinPush(); skinBuf = defaultSkin(myName()); skinRefresh(); } });
+function skinSavePng() {
+  if (!skinBuf) return;
+  const a = document.createElement('a');
+  a.href = skinToCanvas(skinBuf).toDataURL('image/png');
+  a.download = 'voxel-skin.png';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+skFileEl.addEventListener('change', () => {
+  const f = skFileEl.files && skFileEl.files[0];
+  if (!f || !skinBuf) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const sc = Math.min(1, 512 / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.width * sc)); cv.height = Math.max(1, Math.round(img.height * sc));
+      const cx = cv.getContext('2d');
+      cx.drawImage(img, 0, 0, cv.width, cv.height);
+      const d = cx.getImageData(0, 0, cv.width, cv.height);
+      skinPush();
+      skinBuf = skinFromRGBA(cv.width, cv.height, d.data);
+      skNoteEl.textContent = (cv.width === 64 && (cv.height === 64 || cv.height === 32)) ? 'Imported a Minecraft skin.' : 'Painted your picture onto the front of your character. You can keep drawing on it.';
+      skinRefresh();
+    };
+    img.onerror = () => { skNoteEl.textContent = 'Could not read that picture.'; };
+    img.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+  skFileEl.value = '';
+});
+function openSkinEditor() {
+  skinBuf = mySkin ? mySkin.slice() : defaultSkin(myName());
+  skinDef = defaultSkin(myName());
+  skinUndo = []; skinView = 'front'; skinTool = 'pen'; skinCur = { x: 4, y: 2 };
+  showMenu('skin');
+  skinSetColor(skinColor, skinPalIdx);
+}
+function skinDone() {
+  if (skinBuf) mySkin = skinEqual(skinBuf, defaultSkin(myName())) ? null : skinBuf;
+  try { if (mySkin) localStorage.setItem(SKIN_KEY, skinEncode(mySkin)); else localStorage.removeItem(SKIN_KEY); } catch (e) {}
+  skinBuf = null;
+  showMenu('home');
+}
+document.getElementById('btnSkin').addEventListener('click', openSkinEditor);
+document.getElementById('btnSkinDone').addEventListener('click', skinDone);
+// controller: D-pad or left stick moves the cursor, A paints, X changes tool, Y changes view, LB / RB change color, View is undo, B or Start is done
+function skinPad(cur, pressed, ax, dt) {
+  if (!skinBuf) return;
+  skinPadRep -= dt;
+  const V = SKIN_VIEWS[skinView];
+  let dx = 0, dy = 0, changed = false;
+  if (pressed(14)) { dx = -1; skinPadRep = 0.25; } else if (pressed(15)) { dx = 1; skinPadRep = 0.25; }
+  else if (pressed(12)) { dy = -1; skinPadRep = 0.25; } else if (pressed(13)) { dy = 1; skinPadRep = 0.25; }
+  else if (skinPadRep <= 0) {
+    const sx = ax(0), sy = ax(1);
+    if (cur[14] || sx < -0.5) dx = -1; else if (cur[15] || sx > 0.5) dx = 1; else if (cur[12] || sy < -0.5) dy = -1; else if (cur[13] || sy > 0.5) dy = 1;
+    if (dx || dy) skinPadRep = 0.09;
+  }
+  if (dx || dy) { skinCur.x = Math.max(0, Math.min(V.w - 1, skinCur.x + dx)); skinCur.y = Math.max(0, Math.min(V.h - 1, skinCur.y + dy)); changed = true; }
+  if (pressed(0)) { skinPush(); skinApply(skinCur.x, skinCur.y); changed = true; }
+  else if (cur[0] && (dx || dy) && (skinTool === 'pen' || skinTool === 'erase')) skinApply(skinCur.x, skinCur.y); // hold A and move to draw a line
+  if (pressed(2)) { const order = ['pen', 'fill', 'pick', 'erase']; skinTool = order[(order.indexOf(skinTool) + 1) % order.length]; changed = true; }
+  if (pressed(3)) { const order = ['front', 'back', 'left', 'right', 'top']; skinSetView(order[(order.indexOf(skinView) + 1) % order.length]); changed = false; }
+  if (pressed(4) || pressed(5)) {
+    const i = ((skinPalIdx < 0 ? 0 : skinPalIdx) + (pressed(5) ? 1 : SKIN_PALETTE.length - 1)) % SKIN_PALETTE.length;
+    skinSetColor(hexToRgb(SKIN_PALETTE[i]), i); changed = false;
+  }
+  if (pressed(8)) { skinUndoStep(); changed = false; }
+  if (pressed(1) || pressed(9)) { skinDone(); return; }
+  if (changed) skinRefresh();
+}
+
+// ---- other players: a body painted with a skin ----
+function skinBoxGeo(part, w, h, d) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const uv = geo.attributes.uv.array;
+  ['left', 'right', 'top', 'bottom', 'front', 'back'].forEach((f, i) => { // the order three.js builds a box in: +x, -x, +y, -y, +z, -z
+    const r = SK[part][f];
+    const u0 = r[0] / 64, u1 = (r[0] + r[2]) / 64, v0 = 1 - r[1] / 64, v1 = 1 - (r[1] + r[3]) / 64, o = i * 8;
+    uv[o] = u0; uv[o + 1] = v0; uv[o + 2] = u1; uv[o + 3] = v0; uv[o + 4] = u0; uv[o + 5] = v1; uv[o + 6] = u1; uv[o + 7] = v1;
+  });
+  geo.attributes.uv.needsUpdate = true;
+  return geo;
+}
+function nameTagMesh(name, mats, y) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = 'rgba(0,0,0,0.55)'; cx.fillRect(0, 8, 256, 48);
+  cx.fillStyle = '#ffffff'; cx.font = 'bold 30px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText(name, 128, 33);
+  const tex = new THREE.CanvasTexture(cv);
+  const lmat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+  mats.push(lmat);
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.375), lmat);
+  label.position.set(0, y, 0);
+  return label;
+}
+function makeSkinAvatar(name, px) {
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const mats = [], geos = [];
+  const tex = new THREE.CanvasTexture(skinToCanvas(px));
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
+  const mat = new THREE.MeshBasicMaterial({ map: tex });
+  mats.push(mat);
+  const U = 0.9 / 16; // one skin pixel in the world
+  const part = (pn, w, h, d) => { const geo = skinBoxGeo(pn, w * U, h * U, d * U); geos.push(geo); return new THREE.Mesh(geo, mat); };
+  const head = part('head', 8, 8, 8); head.position.set(0, 28 * U, 0); g.add(head);
+  const body = part('body', 8, 12, 4); body.position.set(0, 18 * U, 0); g.add(body);
+  const arms = [], legs = [];
+  [['rarm', -1], ['larm', 1]].forEach(a => {
+    const arm = new THREE.Group(); arm.position.set(a[1] * 6 * U, 24 * U, 0);
+    const m = part(a[0], 4, 12, 4); m.position.set(0, -6 * U, 0); arm.add(m); g.add(arm); arms.push(arm);
+  });
+  [['rleg', -1], ['lleg', 1]].forEach(l => {
+    const leg = new THREE.Group(); leg.position.set(l[1] * 2 * U, 12 * U, 0);
+    const m = part(l[0], 4, 12, 4); m.position.set(0, -6 * U, 0); leg.add(m); g.add(leg); legs.push(leg);
+  });
+  const label = nameTagMesh(name, mats, 2.2);
+  g.add(label);
+  return { group: g, label, mats, geos, tex, arms, legs, x: 0, y: 0, z: 0, walkT: 0 };
+}
+
 // ================= Multiplayer: host a world, friends join with a room code =================
 // The host's computer runs the world and its animals. Friends connect straight to the host (through PeerJS) and see the same world.
 const MP_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -3820,7 +4318,8 @@ function netApplyBlocks(list) {
 }
 
 // ---- how other players look ----
-function makeAvatar(name) {
+function makeAvatar(name, skinPx) {
+  if (skinPx) return makeSkinAvatar(name, skinPx);
   const g = new THREE.Group();
   g.rotation.order = 'YXZ';
   const mats = [];
@@ -3838,18 +4337,7 @@ function makeAvatar(name) {
     const leg = new THREE.Group(); leg.position.set(sx * 0.13, 0.66, 0);
     const lm = mk(0.22, 0.66, 0.22, 0x2a3a6a); lm.position.set(0, -0.33, 0); leg.add(lm); g.add(leg); legs.push(leg);
   }
-  // a name tag that always faces the camera
-  const cv = document.createElement('canvas');
-  cv.width = 256; cv.height = 64;
-  const cx = cv.getContext('2d');
-  cx.fillStyle = 'rgba(0,0,0,0.55)'; cx.fillRect(0, 8, 256, 48);
-  cx.fillStyle = '#ffffff'; cx.font = 'bold 30px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
-  cx.fillText(name, 128, 33);
-  const tex = new THREE.CanvasTexture(cv);
-  const lmat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
-  mats.push(lmat);
-  const label = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.375), lmat);
-  label.position.set(0, 2.25, 0);
+  const label = nameTagMesh(name, mats, 2.25);
   g.add(label);
   return { group: g, label, mats, arms, legs, x: 0, y: 0, z: 0, walkT: 0 };
 }
@@ -3858,6 +4346,8 @@ function removeAvatar(id) {
   if (!av) return;
   scene.remove(av.group);
   av.mats.forEach(m => m.dispose());
+  if (av.geos) av.geos.forEach(o => o.dispose());
+  if (av.tex && av.tex.dispose) av.tex.dispose();
   delete net.avatars[id];
 }
 function clearAvatars() { for (const id in net.avatars) removeAvatar(id); net.avatars = {}; }
@@ -3867,9 +4357,12 @@ function updateAvatars(dt) {
   for (const id in net.avatars) if (!view[id]) removeAvatar(id);
   for (const id in view) {
     const st = view[id];
+    const sk = net.mode === 'host' ? (st.skin || null) : (net.skins[id] || null);
     let av = net.avatars[id];
+    if (av && av.skinRef !== sk) { removeAvatar(id); av = null; } // their skin arrived or changed
     if (!av) {
-      av = net.avatars[id] = makeAvatar(st.name || 'Player');
+      av = net.avatars[id] = makeAvatar(st.name || 'Player', sk);
+      av.skinRef = sk;
       av.x = st.x; av.y = st.y; av.z = st.z;
       scene.add(av.group);
     }
@@ -3964,7 +4457,7 @@ function openRoom(attempt) {
   });
 }
 function hostSendWorld(conn) {
-  conn.send({ t: 'welcome', seed: cur.seed, gen: cur.gen || 1, name: cur.name, time: worldTime, spawn: [sp0.x, sp0.y, sp0.z], id: conn.peer, host: net.name });
+  conn.send({ t: 'welcome', seed: cur.seed, gen: cur.gen || 1, name: cur.name, time: worldTime, spawn: [sp0.x, sp0.y, sp0.z], id: conn.peer, host: net.name, skin: mySkin ? skinEncode(mySkin) : undefined });
   const es = packEdits(); // every block that has been changed so far
   let batch = [], size = 0;
   for (const k in es) {
@@ -3974,6 +4467,7 @@ function hostSendWorld(conn) {
   }
   if (batch.length) conn.send({ t: 'edits', list: batch });
   conn.send({ t: 'ready' });
+  for (const oid in net.players) { const o = net.players[oid]; if (oid !== conn.peer && o.skinData) conn.send({ t: 'skin', id: oid, data: o.skinData }); } // how the others look
 }
 function mobByNid(id) { for (const m of mobs) if (m.nid === id && !m.puppet) return m; return null; }
 function hostGot(conn, msg) {
@@ -3982,8 +4476,11 @@ function hostGot(conn, msg) {
   if (msg.t === 'hello') {
     if (Object.keys(net.players).length >= 7) { conn.send({ t: 'full' }); setTimeout(() => { try { conn.close(); } catch (e) {} }, 300); return; }
     net.conns[id] = conn;
-    net.players[id] = { id, name: String(msg.name || 'Player').slice(0, 14), x: sp0.x, y: sp0.y, z: sp0.z, yaw: 0, pitch: 0, cr: false, item: 0 };
+    net.players[id] = { id, name: String(msg.name || 'Player').slice(0, 14), x: sp0.x, y: sp0.y, z: sp0.z, yaw: 0, pitch: 0, cr: false, item: 0, skin: null, skinData: '' };
+    const sd = typeof msg.skin === 'string' ? msg.skin : '', skp = sd ? skinDecode(sd) : null;
+    if (skp) { net.players[id].skin = skp; net.players[id].skinData = sd; }
     hostSendWorld(conn);
+    if (skp) netSendAll({ t: 'skin', id: id, data: sd }, id);
     toast(net.players[id].name + ' joined');
     chatBroadcast('', net.players[id].name + ' joined the game');
     updateRoomInfo();
@@ -4012,6 +4509,10 @@ function hostGot(conn, msg) {
     q.lastChat = now;
     const text = String(msg.text || '').trim().slice(0, 120);
     if (text) chatBroadcast(q.name, text);
+  } else if (msg.t === 'milk') {
+    const m = mobByNid(msg.id), item = msg.item | 0;
+    if (m && m.type === 'cow' && !m.dying && (item === 130 || item === 131) && Math.hypot(m.x - q.x, m.z - q.z) < 8 && !(m.milkCd > 0)) { m.milkCd = MILK_REGROW; netSendTo(id, { t: 'milkOk', item: item }); }
+    else netSendTo(id, { t: 'milkNo' });
   } else if (msg.t === 'bye') hostDrop(id);
 }
 function hostDrop(id) {
@@ -4042,7 +4543,7 @@ function joinRoom(raw) {
   peer.on('open', () => {
     const conn = peer.connect('voxelgame-' + code, { reliable: true });
     net.hostConn = conn;
-    conn.on('open', () => { conn.send({ t: 'hello', name: net.name }); });
+    conn.on('open', () => { conn.send({ t: 'hello', name: net.name, skin: mySkin ? skinEncode(mySkin) : undefined }); });
     conn.on('data', msg => guestGot(msg));
     conn.on('close', () => {
       clearTimeout(giveUp);
@@ -4061,7 +4562,7 @@ function joinRoom(raw) {
 }
 function guestGot(msg) {
   if (!msg || !msg.t) return;
-  if (msg.t === 'welcome') { net.myId = msg.id; net.pending = { seed: msg.seed, gen: msg.gen, name: msg.name, time: msg.time, spawn: msg.spawn, host: msg.host, edits: {} }; }
+  if (msg.t === 'welcome') { net.myId = msg.id; net.skins = {}; if (msg.skin) { const hs = skinDecode(msg.skin); if (hs) net.skins.host = hs; } net.pending = { seed: msg.seed, gen: msg.gen, name: msg.name, time: msg.time, spawn: msg.spawn, host: msg.host, edits: {} }; }
   else if (msg.t === 'edits' && net.pending) { for (const e of msg.list) net.pending.edits[e[0]] = e[1]; }
   else if (msg.t === 'ready') guestStart();
   else if (msg.t === 'full') { mpNote('That room is full.'); netLeave(); }
@@ -4075,6 +4576,9 @@ function guestGot(msg) {
   else if (msg.t === 'mobs') applyMobSnapshot(msg.list);
   else if (msg.t === 'time') worldTime = msg.v;
   else if (msg.t === 'chat') addChatLine(msg.name ? String(msg.name).slice(0, 14) : '', String(msg.text || '').slice(0, 120));
+  else if (msg.t === 'milkOk') { const it = msg.item | 0; if ((it === 130 || it === 131) && count(it) > 0) giveMilk(it); }
+  else if (msg.t === 'milkNo') toast('This cow has no milk right now. Try again in a little while.');
+  else if (msg.t === 'skin') { const sk = skinDecode(msg.data); if (sk && typeof msg.id === 'string') net.skins[msg.id.slice(0, 60)] = sk; }
   else if (msg.t === 'hurt') playerBitten(Number(msg.dmg) || 1);
   else if (msg.t === 'loot') { for (const id of msg.ids) if (ITEMS[id]) dropItem(id, msg.x, msg.y, msg.z); }
 }
@@ -4096,7 +4600,7 @@ function netLeave() {
   try { if (net.hostConn) net.hostConn.close(); } catch (e) {}
   try { if (net.peer) net.peer.destroy(); } catch (e) {}
   net.mode = 'off'; net.peer = null; net.conns = {}; net.hostConn = null; net.players = {}; net.others = {};
-  net.outBlocks = []; net.pending = null; net.code = '';
+  net.outBlocks = []; net.pending = null; net.code = ''; net.skins = {};
   clearAvatars(); clearPuppets();
   closeChat(false); clearChat();
   updateRoomInfo();
