@@ -74,6 +74,7 @@
   .dbox{width:min(420px,90vw);text-align:center}
   .dbox h1{font-size:52px;margin:0 0 6px;text-shadow:3px 3px 0 rgba(0,0,0,.5)}
   .dsub{margin-bottom:16px;color:#fcc}
+  #roomInfo{font-size:16px;color:#9ff;margin-bottom:8px;min-height:6px}
 </style>
 </head>
 <body>
@@ -100,6 +101,7 @@
 <div id="start">
   <div id="startBox">
     <div id="startTitle">Click to play</div>
+    <div id="roomInfo"></div>
     <div id="startHelp">WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and armor. Q: drop an item<br>Keys 1-9 or mouse wheel: pick a slot (9 slots, 64 per stack)<br>Hold Shift: sprint. Hold Down arrow: crouch<br><br>Xbox controller: plug it in, press any button, then press A to start.<br>Left stick move, right stick look, A jump, B crouch, RT mine or attack, LT place or use, LB and RB change slot, X drop, Y inventory, click the left stick to sprint, Start to pause. In menus use the D-pad and A. On this screen: A or Start resumes, View (Back) saves and quits.</div>
     <div class="btnRow"><button class="big" id="btnResume">Resume</button><button class="big alt" id="btnQuit">Save and Quit to Title</button></div>
   </div>
@@ -109,7 +111,7 @@
     <h1>VOXEL GAME</h1>
     <div class="tag">Build. Explore. Survive.</div>
     <button class="big" id="btnSingle">Single Player</button>
-    <button class="big soon" id="btnMulti">Multiplayer</button>
+    <button class="big" id="btnMulti">Multiplayer</button>
     <div class="note" id="multiNote"></div>
     <div class="note small">Worlds are saved in this browser, on this computer.</div>
   </div>
@@ -118,6 +120,18 @@
     <div id="worldList"></div>
     <div class="newRow"><input id="worldName" maxlength="24" placeholder="Name (optional)"><button class="big" id="btnNew">New World</button></div>
     <button class="big alt" id="btnBack">Back</button>
+  </div>
+  <div class="box" id="mMulti" style="display:none">
+    <h2>Multiplayer</h2>
+    <div class="note">Your name</div>
+    <div class="newRow"><input id="mpName" maxlength="14" placeholder="Your name"></div>
+    <div class="note">Join a friend with their room code</div>
+    <div class="newRow"><input id="mpCode" maxlength="6" placeholder="ROOM CODE" style="text-transform:uppercase"><button class="big" id="btnJoin">Join</button></div>
+    <div class="note" id="mpNote"></div>
+    <div class="note">Or host a world. Friends join with the room code you get.</div>
+    <div id="hostList"></div>
+    <button class="big" id="btnHostNew">Host a new world</button>
+    <button class="big alt" id="btnMpBack">Back</button>
   </div>
 </div>
 <div id="death">
@@ -129,6 +143,7 @@
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 // If something goes wrong, show the error on screen instead of failing silently
 window.addEventListener('error', function (e) {
@@ -149,6 +164,7 @@ const WOLF_ATTACKS = true, WOLF_AGGRO = 5;
 const FOREST_DENSITY = 0.018, SPARSE_DENSITY = 0.003;
 // Rainforest: bigger JUNGLE_DENSITY = thicker jungle.
 const JUNGLE_DENSITY = 0.028;
+const TOUCANS_ATTACK = true; // rainforest toucans always attack. Set to false to make them harmless.
 let RAIN_ON = true; // rainforests only appear in worlds made with this version, so older worlds keep their terrain
 
 // ================= Noise =================
@@ -749,7 +765,7 @@ function buildChunk(cx, cz) {
   const c = ensureData(cx, cz);
   ensureData(cx + 1, cz); ensureData(cx - 1, cz); ensureData(cx, cz + 1); ensureData(cx, cz - 1);
   meshChunk(c);
-  trySpawnMobs(c);
+  if (net.mode !== 'guest') trySpawnMobs(c); // on a friend's world the host decides which animals exist
 }
 
 function remeshAt(cx, cz) {
@@ -1201,13 +1217,18 @@ function hurt(n) {
   if (health <= 0) die();
 }
 let biteToastAt = 0;
-function mobBite(dmg, attacker) {
-  if (attacker) petsTarget(attacker);
+// you were bitten: armor helps, and it wears down
+function playerBitten(dmg) {
   const red = Math.min(0.8, armorPoints() * 0.04);
   const fin = Math.max(1, Math.round(dmg * (1 - red)));
   wearArmor();
   hurt(fin);
-  if (performance.now() - biteToastAt > 2500) { biteToastAt = performance.now(); toast('A wolf bit you!'); }
+  if (performance.now() - biteToastAt > 2500) { biteToastAt = performance.now(); toast('Something bit you!'); }
+}
+function mobBite(dmg, attacker, who) {
+  if (attacker) petsTarget(attacker);
+  if (who && !who.local) { netSendTo(who.id, { t: 'hurt', dmg }); return; } // it bit one of your friends
+  playerBitten(dmg);
 }
 function fallHurt(dmg) {
   const red = Math.min(0.8, armorPoints() * 0.04);
@@ -1344,6 +1365,7 @@ const MOBS = {
   chicken:{ hp: 4,  speed: 1.0, bw: 0.35, bh: 0.4, bl: 0.5, legH: 0.3,  legW: 0.07, hs: 0.25, color: 0xffffff, head: 0xffffff, leg: 0xf0a020, legs: 2, r: 0.25, beak: true },
   turtle: { hp: 10, speed: 0.7, bw: 0.8,  bh: 0.3, bl: 1.0, legH: 0.15, legW: 0.2,  hs: 0.3,  color: 0x2f6b34, head: 0x9bbf6a, leg: 0x9bbf6a, legs: 4, r: 0.45, aquatic: true },
   wolf:   { hp: 10, speed: 1.0, bw: 0.5,  bh: 0.5, bl: 0.95, legH: 0.45, legW: 0.16, hs: 0.38, color: 0x9a9a9a, head: 0xaaaaaa, leg: 0x888888, legs: 4, r: 0.4, hostile: true, dmg: 3 },
+  toucan: { hp: 6,  speed: 4.5, flying: true, hostile: true, dmg: 2, bw: 0.28, bh: 0.28, bl: 0.5, hs: 0.2, r: 0.4 },
   fish:   { hp: 3,  speed: 0.9, bw: 0.2,  bh: 0.22, bl: 0.55, fish: true, r: 0.3 }
 };
 const FISHCOL = [0xf08030, 0xe0e0e0, 0x4a90d9, 0xe8c030];
@@ -1355,9 +1377,33 @@ const DROPS = {
   sheep:   [{ id: 105, min: 1, max: 2, ch: 0.8 }],
   chicken: [{ id: 106, min: 1, max: 1, ch: 0.8 }, { id: 107, min: 1, max: 2, ch: 0.5 }],
   fish:    [{ id: 112, min: 1, max: 1, ch: 1.0 }],
-  turtle:  [{ id: 113, min: 1, max: 1, ch: 0.4 }]
+  turtle:  [{ id: 113, min: 1, max: 1, ch: 0.4 }],
+  toucan:  [{ id: 107, min: 1, max: 2, ch: 0.8 }]
 };
 const mobs = [];
+const net = {
+  mode: 'off',            // 'off', 'host' or 'guest'
+  players: {},            // host: the friends who joined (their positions)
+  others: {},             // guest: everyone else in the game
+  avatars: {}, puppets: {}, deadNids: {}, conns: {}, hostConn: null, peer: null, pending: null,
+  outBlocks: [], applying: false, code: '', name: 'Player', myId: '', nid: 0,
+  t: 0, lastPs: 0, lastMobs: 0, lastTime: 0, lastP: 0
+};
+// the closest player to a spot (animals and toucans pick who to go after)
+function nearestPlayer(x, y, z) {
+  let best = dead ? null : { id: 'host', local: true, x: p.x, y: p.y, z: p.z };
+  let bd = best ? Math.hypot(p.x - x, p.z - z) : Infinity;
+  if (net.mode === 'host') {
+    for (const id in net.players) {
+      const q = net.players[id];
+      const d = Math.hypot(q.x - x, q.z - z);
+      if (d < bd) { bd = d; best = { id, local: false, x: q.x, y: q.y, z: q.z }; }
+    }
+  }
+  if (best) best.dist = bd;
+  return best;
+}
+function nearestPlayerDist(x, z) { const n = nearestPlayer(x, 0, z); return n ? n.dist : Infinity; }
 
 const geoCache = {};
 function boxGeo(w, h, l) {
@@ -1491,6 +1537,38 @@ function addFishDetails(s, g, mk, col) {
   part(s.bw * 1.04, s.bh * 0.18, s.bl * 0.12, 0xffffff, 0, s.bh * 0.5, -s.bl * 0.05);
 }
 
+// the toucan: black body, white throat, blue-ringed eyes, a big striped beak and flapping wings
+function buildToucan(g, mk, s) {
+  const part = (w, h, l, color, x, y, z) => { const m = mk(w, h, l, color); m.position.set(x, y, z); g.add(m); return m; };
+  part(s.bw, s.bh, s.bl, 0x15151a, 0, s.bh / 2, 0);
+  const hy = s.bh * 0.9, hz = s.bl / 2 + s.hs * 0.15;
+  part(s.hs, s.hs, s.hs, 0x15151a, 0, hy, hz);
+  part(s.hs * 0.85, s.hs * 0.4, 0.05, 0xf6f2e8, 0, hy - s.hs * 0.25, hz + s.hs / 2 + 0.01);
+  for (const sx of [-1, 1]) {
+    part(0.02, 0.07, 0.07, 0x3a7ad0, sx * (s.hs / 2 + 0.004), hy + s.hs * 0.12, hz + 0.02);
+    part(0.02, 0.045, 0.045, 0xffffff, sx * (s.hs / 2 + 0.012), hy + s.hs * 0.12, hz + 0.02);
+    part(0.02, 0.025, 0.025, 0x111111, sx * (s.hs / 2 + 0.02), hy + s.hs * 0.12, hz + 0.025);
+  }
+  const bz = hz + s.hs / 2;
+  part(0.1, 0.11, 0.14, 0xf08a1a, 0, hy - 0.01, bz + 0.07);   // orange base of the beak
+  part(0.09, 0.1, 0.13, 0xf5c518, 0, hy - 0.015, bz + 0.2);   // yellow middle
+  part(0.07, 0.07, 0.07, 0xd02020, 0, hy - 0.02, bz + 0.3);   // red tip
+  part(0.14, 0.04, 0.3, 0x15151a, 0, s.bh * 0.45, -s.bl / 2 - 0.14);
+  part(0.1, 0.02, 0.1, 0xd02020, 0, s.bh * 0.43, -s.bl / 2 - 0.05);
+  for (const sx of [-1, 1]) part(0.05, 0.05, 0.08, 0xf08a1a, sx * 0.07, -0.02, 0.02);
+  const wings = [];
+  for (const sx of [-1, 1]) {
+    const pv = new THREE.Group();
+    pv.position.set(sx * s.bw / 2, s.bh * 0.8, 0);
+    const wing = mk(0.34, 0.03, 0.3, 0x1f1f26);
+    wing.position.set(sx * 0.17, 0, 0);
+    pv.add(wing);
+    g.add(pv);
+    wings.push(pv);
+  }
+  return wings;
+}
+
 function spawnMob(type, x, y, z) {
   const s = MOBS[type];
   const g = new THREE.Group();
@@ -1517,6 +1595,9 @@ function spawnMob(type, x, y, z) {
     pivots.push(pv);
     addFishDetails(s, g, mk, col);
     mh = s.bh;
+  } else if (s.flying) {
+    buildToucan(g, mk, s).forEach(w => pivots.push(w));
+    mh = s.bh + 0.15;
   } else {
     const body = mk(s.bw, s.bh, s.bl, s.color);
     body.position.set(0, s.legH + s.bh / 2, 0);
@@ -1548,14 +1629,16 @@ function spawnMob(type, x, y, z) {
   }
   scene.add(g);
   mobs.push({
-    type, spec: s, group: g, x, y, z, vy: 0, vv: 0, rot: Math.random() * Math.PI * 2, hp: s.hp,
+    type, spec: s, group: g, nid: ++net.nid, x, y, z, vy: 0, vv: 0, rot: Math.random() * Math.PI * 2, hp: s.hp,
     timer: Math.random() * 3, moving: false, onGround: false, panic: 0, flash: 0, kx: 0, kz: 0,
     pivots, signs: s.fish ? [1] : (s.legs === 4 ? [1, -1, -1, 1] : [1, -1]), mats, walkT: 0,
     h: mh, dying: false, dyingT: 0, sheared: false, regrow: 0, wool, biteCd: 0, aggro: 0, chasing: false,
     maxHp: s.hp, eaten: 0, calm: 0, tamed: false, target: null, targetT: 0, fallPeak: null, grudge: null, grudgeT: 0
   });
+  return mobs[mobs.length - 1];
 }
 function removeMob(m) {
+  if (m.puppet) { delete net.puppets[m.nid]; net.deadNids[m.nid] = performance.now(); }
   scene.remove(m.group);
   m.mats.forEach(o => o.m.dispose());
   const i = mobs.indexOf(m);
@@ -1575,7 +1658,7 @@ function trySpawnMobs(c) {
       const lx = Math.floor(Math.random() * CH), lz = Math.floor(Math.random() * CH);
       let y = HEIGHT - 1;
       while (y > 0 && c.data[lx + CH * (lz + CH * y)] === 0) y--;
-      { const gb = c.data[lx + CH * (lz + CH * y)]; if (gb !== 1 && gb !== 31) continue; }
+      if (c.data[lx + CH * (lz + CH * y)] !== 1) continue; // farm animals only live on normal grass
       spawnMob(t, c.cx * CH + lx + 0.5, y + 1, c.cz * CH + lz + 0.5);
     }
   }
@@ -1590,8 +1673,17 @@ function trySpawnMobs(c) {
       while (y > 0 && c.data[lx + CH * (lz + CH * y)] === 0) y--;
       { const gb = c.data[lx + CH * (lz + CH * y)]; if (gb !== 1 && gb !== 31) continue; }
       const wx = c.cx * CH + lx + 0.5, wz = c.cz * CH + lz + 0.5;
-      if (Math.hypot(wx - p.x, wz - p.z) < 24) continue;
+      if (nearestPlayerDist(wx, wz) < 24) continue;
       spawnMob('wolf', wx, y + 1, wz);
+    }
+  }
+  // toucans live in the rainforest, up in the treetops
+  if (RAIN_ON && countMobs(['toucan']) < 8 && Math.random() < 0.35) {
+    const tlx = Math.floor(Math.random() * CH), tlz = Math.floor(Math.random() * CH);
+    const twx = c.cx * CH + tlx, twz = c.cz * CH + tlz, tht = c.top[tlx + CH * tlz];
+    const tty = tht + 10 + Math.floor(Math.random() * 5);
+    if (isRain(twx, twz) && tht > SEA + 1 && tty < HEIGHT - 3 && c.data[tlx + CH * (tlz + CH * tty)] === 0 && nearestPlayerDist(twx, twz) >= 18) {
+      spawnMob('toucan', twx + 0.5, tty, twz + 0.5);
     }
   }
   // fish schools in deeper water
@@ -1678,7 +1770,7 @@ function updateFish(m, dt) {
     m.group.rotation.z = Math.PI / 2; m.group.rotation.x = 0;
   } else {
     m.vy = 0; m.group.rotation.z = 0;
-    if (m.panic > 0) { m.panic -= dt; m.rot = Math.atan2(m.x - p.x, m.z - p.z); }
+    if (m.panic > 0) { m.panic -= dt; m.rot = Math.atan2(m.x - (m.fleeX !== undefined ? m.fleeX : p.x), m.z - (m.fleeZ !== undefined ? m.fleeZ : p.z)); }
     else {
       m.timer -= dt;
       if (m.timer <= 0) { m.timer = 1.5 + Math.random() * 3; m.rot += (Math.random() - 0.5) * 2.4; m.vv = (Math.random() - 0.5) * 0.9; }
@@ -1704,6 +1796,85 @@ function updateFish(m, dt) {
   m.group.rotation.y = m.rot;
   tickFlash(m, dt);
 }
+// ================= Rainforest rules, toucans =================
+const FARM = { sheep: 1, cow: 1, pig: 1, chicken: 1 }; // these animals never go into the rainforest
+// which way is the nearest way out of the rainforest, onto dry land? (null if there is none close by)
+function rainExitAngle(x, z, a0) {
+  for (const r of [3, 5, 8, 12, 18, 26]) {
+    for (let k = 0; k < 16; k++) {
+      const ang = (k * Math.PI / 8 + a0) % (Math.PI * 2);
+      const ix = Math.floor(x + Math.sin(ang) * r), iz = Math.floor(z + Math.cos(ang) * r);
+      if (!isRain(ix, iz) && colHeight(ix, iz) > SEA + 1) return ang;
+    }
+  }
+  return null;
+}
+// a farm animal that stays trapped inside the rainforest (boxed in by trees) is moved to dry land just outside
+function rainRescue(m) {
+  const a0 = Math.random() * Math.PI * 2;
+  for (const r of [4, 6, 9, 13, 19, 27]) {
+    for (let k = 0; k < 16; k++) {
+      const ang = (k * Math.PI / 8 + a0) % (Math.PI * 2);
+      const x = Math.floor(m.x + Math.sin(ang) * r), z = Math.floor(m.z + Math.cos(ang) * r);
+      if (isRain(x, z) || colHeight(x, z) <= SEA + 1) continue;
+      for (let y = Math.floor(m.y) + 8; y >= Math.floor(m.y) - 8; y--) {
+        if (solid(getBlock(x, y, z)) && getBlock(x, y + 1, z) === 0 && getBlock(x, y + 2, z) === 0) {
+          m.x = x + 0.5; m.y = y + 1; m.z = z + 0.5; m.vy = 0; m.fallPeak = null;
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+// toucans fly straight through leaves, but not through solid ground
+function flyBlocked(x, y, z) {
+  for (let ix = Math.floor(x - 0.22); ix <= Math.floor(x + 0.22); ix++)
+    for (let iy = Math.floor(y); iy <= Math.floor(y + 0.4); iy++)
+      for (let iz = Math.floor(z - 0.22); iz <= Math.floor(z + 0.22); iz++) {
+        const b = getBlock(ix, iy, iz);
+        if (solid(b) && b !== 9 && b !== 10 && b !== 11 && b !== 27) return true;
+      }
+  return false;
+}
+function updateToucan(m, dt) {
+  const s = m.spec;
+  m.biteCd = Math.max(0, m.biteCd - dt);
+  m.walkT += dt * 14;
+  m.pivots[0].rotation.z = -Math.sin(m.walkT) * 0.8;
+  m.pivots[1].rotation.z = Math.sin(m.walkT) * 0.8;
+  const np = TOUCANS_ATTACK ? nearestPlayer(m.x, m.y, m.z) : null;
+  if (m.backoff > 0) m.backoff -= dt;
+  let vx = 0, vy = 0, vz = 0;
+  if (np && np.dist < 70) {
+    // always goes after the nearest player, swooping in to bite and then flapping back
+    const tx = np.x - m.x, ty = np.y + 1.1 - (m.y + 0.15), tz = np.z - m.z;
+    const d3 = Math.hypot(tx, ty, tz) || 1;
+    if (m.backoff > 0) { vx = -tx / d3 * s.speed * 0.8; vz = -tz / d3 * s.speed * 0.8; vy = 2.5; }
+    else if (d3 > 1.1) { vx = tx / d3 * s.speed; vy = ty / d3 * s.speed; vz = tz / d3 * s.speed; }
+    if (d3 < 1.7 && m.biteCd <= 0) { m.biteCd = 1.2; m.backoff = 0.5; mobBite(s.dmg, m, np); }
+    m.chasing = true;
+    if (d3 > 1.1 || m.backoff > 0) m.rot = Math.atan2(m.backoff > 0 ? -tx : tx, m.backoff > 0 ? -tz : tz);
+  } else {
+    m.timer -= dt;
+    if (m.timer <= 0) { m.timer = 2 + Math.random() * 3; m.wrot = Math.random() * Math.PI * 2; m.wvy = (Math.random() - 0.5) * 1.5; }
+    vx = Math.sin(m.wrot || 0) * 2; vz = Math.cos(m.wrot || 0) * 2; vy = m.wvy || 0;
+    m.rot = m.wrot || 0;
+    m.chasing = false;
+  }
+  vx += m.kx; vz += m.kz;
+  m.kx *= Math.max(0, 1 - 6 * dt); m.kz *= Math.max(0, 1 - 6 * dt);
+  let climb = 0;
+  const nx = m.x + vx * dt, nz = m.z + vz * dt;
+  if (!flyBlocked(nx, m.y, m.z)) m.x = nx; else climb = 3;
+  if (!flyBlocked(m.x, m.y, nz)) m.z = nz; else climb = 3;
+  const ny = m.y + (vy + climb) * dt;
+  if (ny > 2 && (ny < HEIGHT - 3 || ny < m.y) && !flyBlocked(m.x, ny, m.z)) m.y = ny;
+  m.group.position.set(m.x, m.y, m.z);
+  m.group.rotation.y = m.rot;
+  tickFlash(m, dt);
+}
+
 // ================= Wolves: taming, pets and fighting =================
 const MEAT = { 103: 1, 104: 1, 105: 1, 106: 1 }; // raw beef, porkchop, mutton and chicken
 let petToastAt = 0;
@@ -1805,6 +1976,7 @@ function petAI(m, dt, s, dxp, dzp, dp) {
     if (snack) {
       const mx = snack.x - m.x, mz = snack.z - m.z, md = Math.hypot(mx, mz);
       m.chasing = true; m.rot = Math.atan2(mx, mz); m.moving = md > 0.9;
+      if (petStuck(m, dt, md)) { teleportPet(m, snack.x, snack.y, snack.z); return; } // blocked: hop over to it
       if (md < 1.3) {
         removeDrop(drops.indexOf(snack));
         m.hp = Math.min(m.maxHp, m.hp + 4);
@@ -1863,13 +2035,15 @@ function wolfAI(m, dt, s) {
   m.calm = Math.max(0, m.calm - dt);
   if (m.calm <= 0) m.eaten = 0;
   if (!WOLF_ATTACKS || m.calm > 0) return;
-  if (dp < WOLF_AGGRO && Math.abs(p.y - m.y) < 3) m.aggro = 6;
+  const np = nearestPlayer(m.x, m.y, m.z);
+  if (np && np.dist < WOLF_AGGRO && Math.abs(np.y - m.y) < 3) m.aggro = 6;
   else if (m.aggro > 0) m.aggro -= dt;
-  if (m.aggro > 0) {
+  if (m.aggro > 0 && np) {
+    const ex = np.x - m.x, ez = np.z - m.z, ed = Math.hypot(ex, ez);
     m.chasing = true;
-    m.rot = Math.atan2(dxp, dzp);
-    m.moving = dp > 1.2;
-    if (dp < 1.7 && Math.abs(p.y - m.y) < 1.6 && m.biteCd <= 0) { m.biteCd = 1; mobBite(s.dmg, m); }
+    m.rot = Math.atan2(ex, ez);
+    m.moving = ed > 1.2;
+    if (ed < 1.7 && Math.abs(np.y - m.y) < 1.6 && m.biteCd <= 0) { m.biteCd = 1; mobBite(s.dmg, m, np); }
   }
 }
 
@@ -1880,6 +2054,7 @@ function updateMob(m, dt) {
   if (m.dying) {
     m.dyingT += dt;
     const k = Math.min(1, m.dyingT / 0.4);
+    if (s.flying && !boxCollides(m.x, m.y - 6 * dt, m.z, 0.2, 0.3)) m.y -= 6 * dt; // a toucan falls out of the sky
     m.group.rotation.z = k * Math.PI / 2;
     m.group.rotation.y = m.rot;
     m.group.position.set(m.x, m.y, m.z);
@@ -1888,6 +2063,7 @@ function updateMob(m, dt) {
     return;
   }
   if (s.fish) { updateFish(m, dt); return; }
+  if (s.flying) { updateToucan(m, dt); return; }
 
   // sheared sheep slowly regrow their wool
   if (m.sheared) {
@@ -1903,7 +2079,7 @@ function updateMob(m, dt) {
   const inW = getBlock(Math.floor(m.x), Math.floor(m.y + 0.2), Math.floor(m.z)) === WATER;
   if (m.panic > 0) {
     m.panic -= dt;
-    m.rot = Math.atan2(m.x - p.x, m.z - p.z);
+    m.rot = Math.atan2(m.x - (m.fleeX !== undefined ? m.fleeX : p.x), m.z - (m.fleeZ !== undefined ? m.fleeZ : p.z));
     m.moving = true;
   } else {
     m.timer -= dt;
@@ -1913,6 +2089,16 @@ function updateMob(m, dt) {
       m.rot = Math.random() * Math.PI * 2;
     }
   }
+  // farm animals head out if they somehow end up inside the rainforest
+  const noRain = RAIN_ON && FARM[m.type];
+  if (noRain && isRain(Math.floor(m.x), Math.floor(m.z))) {
+    // pick a way out, and try a different one every second or two in case the first is blocked
+    m.exitT = (m.exitT || 0) - dt;
+    if (m.exitT <= 0) { m.exitT = 1.5; m.exitRot = rainExitAngle(m.x, m.z, Math.random() * Math.PI * 2); }
+    if (m.exitRot !== null && m.exitRot !== undefined) { m.rot = m.exitRot; m.moving = true; m.panic = 0; }
+    m.insideT = (m.insideT || 0) + dt;
+    if (m.insideT > 5) { m.insideT = 0; rainRescue(m); } // still inside after 5 seconds: it must be stuck
+  } else m.insideT = 0;
   // wolves: wild ones chase and bite, tamed ones follow you and fight for you
   m.chasing = false;
   if (s.hostile) wolfAI(m, dt, s);
@@ -1920,6 +2106,12 @@ function updateMob(m, dt) {
   const sx = Math.sin(m.rot), sz = Math.cos(m.rot);
   let dx = sx * spd * dt + m.kx * dt, dz = sz * spd * dt + m.kz * dt;
   m.kx *= Math.max(0, 1 - 6 * dt); m.kz *= Math.max(0, 1 - 6 * dt);
+
+  // ...and never step into it
+  if (noRain && !isRain(Math.floor(m.x), Math.floor(m.z)) && isRain(Math.floor(m.x + dx + sx * 0.5), Math.floor(m.z + dz + sz * 0.5))) {
+    dx = 0; dz = 0;
+    if (m.panic <= 0) m.rot += Math.PI * (0.6 + Math.random() * 0.8);
+  }
 
   if (m.moving && !inW && m.panic <= 0 && !s.aquatic && !m.chasing) {
     const ax = Math.floor(m.x + sx * 0.9), az = Math.floor(m.z + sz * 0.9), fy = Math.floor(m.y);
@@ -1966,41 +2158,62 @@ function updateMob(m, dt) {
   m.group.rotation.y = m.rot;
   tickFlash(m, dt);
 }
+// loot goes to whoever earned it (a friend gets theirs sent over, otherwise it drops here)
+function giveLoot(who, ids, x, y, z) {
+  if (net.mode === 'host' && who && net.players[who]) netSendTo(who, { t: 'loot', ids, x, y, z });
+  else for (const id of ids) dropItem(id, x, y, z);
+}
 function startDeath(m) {
   m.dying = true; m.dyingT = 0; m.flash = 0;
   if (m.tamed) toast('Your wolf died.');
   m.mats.forEach(o => o.m.color.set(0xff3030));
-  const list = DROPS[m.type] || [];
-  for (const d of list) {
+  const ids = [];
+  for (const d of (DROPS[m.type] || [])) {
     if (Math.random() < d.ch) {
       const n = d.min + Math.floor(Math.random() * (d.max - d.min + 1));
-      for (let i = 0; i < n; i++) dropItem(d.id, m.x, m.y + 0.6, m.z);
+      for (let i = 0; i < n; i++) ids.push(d.id);
     }
   }
+  giveLoot(m.killer, ids, m.x, m.y + 0.6, m.z);
 }
+// you attack an animal. On a friend's world the host decides what happens to it.
 function hitMob(m) {
   if (m.dying) return;
   const g = selGear();
   const def = g ? TOOLS[g.id] : null;
-  m.hp -= def ? def.dmg : 1;
-  if (!m.tamed) petsTarget(m); // your pets join any fight you start
-  const ax = m.x - p.x, az = m.z - p.z, l = Math.hypot(ax, az) || 1;
-  m.kx = ax / l * 6; m.kz = az / l * 6;
-  m.vy = 5; m.onGround = false;
-  if (m.spec.hostile && WOLF_ATTACKS) m.aggro = 10; else m.panic = 4;
-  m.flash = 0.25;
-  if (m.hp <= 0) startDeath(m);
+  const dmg = def ? def.dmg : 1;
+  if (m.puppet) {
+    if (!m.tamed) { netSend({ t: 'hit', id: m.nid, dmg, fx: p.x, fz: p.z }); m.flash = 0.25; }
+  } else damageMob(m, dmg, p.x, p.z, null);
   if (def) wearSel(1);
 }
-function shearSheep(m) {
-  m.sheared = true; m.regrow = 60;
-  m.wool.forEach(w => { w.visible = false; });
-  m.mats[0].color = 0xe8b9a6;
-  m.mats[0].m.color.set(0xe8b9a6);
+function damageMob(m, dmg, fx, fz, killer) {
+  if (m.dying) return;
+  m.hp -= dmg;
+  if (!m.tamed) petsTarget(m); // your pets join any fight
+  const ax = m.x - fx, az = m.z - fz, l = Math.hypot(ax, az) || 1;
+  m.kx = ax / l * 6; m.kz = az / l * 6;
+  m.vy = 5; m.onGround = false;
+  m.fleeX = fx; m.fleeZ = fz;
+  if (m.spec.hostile && (WOLF_ATTACKS || m.spec.flying)) m.aggro = 10; else m.panic = 4;
+  m.flash = 0.25;
+  if (m.hp <= 0) { m.killer = killer; startDeath(m); }
+}
+function applySheared(m, on) {
+  m.sheared = on;
+  m.wool.forEach(w => { w.visible = !on; });
+  const col = on ? 0xe8b9a6 : m.spec.color;
+  m.mats[0].color = col;
+  m.mats[0].m.color.set(col);
+}
+function shearSheep(m, killer) {
+  m.regrow = 60;
+  applySheared(m, true);
+  const ids = [];
   const n = 1 + Math.floor(Math.random() * 3);
-  for (let i = 0; i < n; i++) dropItem(117, m.x, m.y + 0.8, m.z);
-  toast('Sheared!');
-  wearSel(1);
+  for (let i = 0; i < n; i++) ids.push(117);
+  giveLoot(killer, ids, m.x, m.y + 0.8, m.z);
+  if (!killer) { toast('Sheared!'); wearSel(1); }
 }
 function mobAtRay(maxd) {
   const dir = new THREE.Vector3();
@@ -2322,7 +2535,10 @@ function useDown() {
   const id = selId();
   if (id === 119) {
     const m = mobAtRay(r ? Math.min(4, r.t) : 4);
-    if (m && m.type === 'sheep' && !m.sheared && !m.dying) shearSheep(m);
+    if (m && m.type === 'sheep' && !m.sheared && !m.dying) {
+      if (m.puppet) { netSend({ t: 'shear', id: m.nid }); wearSel(1); toast('Sheared!'); }
+      else shearSheep(m, null);
+    }
     return;
   }
   if (id === 120) { castOrReel(); return; }
@@ -2370,6 +2586,7 @@ document.addEventListener('pointerlockchange', () => {
     leftDown = false; mining = null; crack.visible = false;
     if (inGame && !dead && !panelOpen && !pad.playing) {
       startTitle.textContent = 'Paused. Click to continue';
+      updateRoomInfo();
       startEl.style.display = 'flex';
       saveWorld(false);
     }
@@ -2539,7 +2756,8 @@ function plantSeed(r, id) {
   if (getBlock(t[0], t[1], t[2]) !== 0) return;
   const kind = ITEMS[id].plant;
   setBlock(t[0], t[1], t[2], kind);
-  saplings.push({ x: t[0], y: t[1], z: t[2], t: PLANT_TYPE[kind], at: worldTime + 40 + Math.random() * 40 });
+  if (net.mode === 'guest') netSend({ t: 'sap', x: t[0], y: t[1], z: t[2], tp: PLANT_TYPE[kind] }); // the host grows it
+  else saplings.push({ x: t[0], y: t[1], z: t[2], t: PLANT_TYPE[kind], at: worldTime + 40 + Math.random() * 40 });
   take(id, 1);
 }
 // turn a sapling into a full tree (gx, gy, gz is the ground block under it)
@@ -2641,6 +2859,7 @@ function recordEdit(cx, cz, idx, v) {
   const k = cx + ',' + cz;
   (edits[k] || (edits[k] = {}))[idx] = v;
   dirtyChunks[k] = true;
+  if (net.mode !== 'off' && !net.applying) net.outBlocks.push([k, idx, v]); // tell the other players
 }
 function packEdits() {
   for (const k in dirtyChunks) {
@@ -2687,7 +2906,7 @@ function deleteWorld(id) {
   try { localStorage.removeItem(worldKey(id)); } catch (e) {}
 }
 function saveWorld(manual) {
-  if (!cur || !inGame) return;
+  if (!cur || !inGame || cur.remote) return; // a friend's world is saved on their computer
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
@@ -2721,6 +2940,7 @@ function resetWorldState() {
   leftDown = false; mining = null; crack.visible = false;
   dead = false; deathEl.style.display = 'none'; saplings = [];
   wasRain = null; mist = 0;
+  clearAvatars(); clearPuppets();
   for (let i = particles.length - 1; i >= 0; i--) scene.remove(particles[i].mesh);
   particles.length = 0;
   pad.playing = false; pad.sprint = false;
@@ -2782,12 +3002,15 @@ function showMenu(which) {
   menuEl.style.display = 'flex';
   document.getElementById('mHome').style.display = which === 'home' ? 'block' : 'none';
   document.getElementById('mWorlds').style.display = which === 'worlds' ? 'block' : 'none';
+  document.getElementById('mMulti').style.display = which === 'multi' ? 'block' : 'none';
   if (which === 'worlds') renderWorlds();
+  if (which === 'multi') renderHostList();
   padFocus = 0;
 }
 function quitToTitle() {
   if (dead) respawnState();
   saveWorld(false);
+  netLeave();
   inGame = false;
   try { document.exitPointerLock(); } catch (e) {}
   resetWorldState();
@@ -2832,7 +3055,7 @@ document.getElementById('btnSingle').addEventListener('click', () => {
   if (!loadIndex().length) startWorld(createWorld(''));
   else showMenu('worlds');
 });
-document.getElementById('btnMulti').addEventListener('click', () => { multiNote.textContent = 'Multiplayer is coming soon!'; });
+document.getElementById('btnMulti').addEventListener('click', () => { showMenu('multi'); });
 document.getElementById('btnNew').addEventListener('click', () => { const nm = worldNameEl.value; worldNameEl.value = ''; startWorld(createWorld(nm)); });
 document.getElementById('btnBack').addEventListener('click', () => showMenu('home'));
 document.getElementById('btnResume').addEventListener('click', () => lockPointer());
@@ -2853,6 +3076,398 @@ document.getElementById('btnRespawn').addEventListener('click', () => {
 // save when you leave the page or switch tabs
 addEventListener('beforeunload', () => saveWorld(false));
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveWorld(false); });
+
+// ================= Multiplayer: host a world, friends join with a room code =================
+// The host's computer runs the world and its animals. Friends connect straight to the host (through PeerJS) and see the same world.
+const MP_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const mpNameEl = document.getElementById('mpName');
+const mpCodeEl = document.getElementById('mpCode');
+const mpNoteEl = document.getElementById('mpNote');
+const roomInfoEl = document.getElementById('roomInfo');
+try { mpNameEl.value = localStorage.getItem('voxelgame.name') || ''; } catch (e) {}
+mpNameEl.addEventListener('input', () => { try { localStorage.setItem('voxelgame.name', mpNameEl.value); } catch (e) {} });
+function mpNote(msg) { mpNoteEl.textContent = msg; }
+function myName() { return (mpNameEl.value || '').trim().slice(0, 14) || 'Player'; }
+function makeCode() { let s = ''; for (let i = 0; i < 6; i++) s += MP_CHARS[Math.floor(Math.random() * MP_CHARS.length)]; return s; }
+function r2(v) { return Math.round(v * 100) / 100; }
+function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+function netInfo() { return net.mode === 'off' ? '' : '  Room ' + net.code + ' (' + (Object.keys(net.mode === 'host' ? net.players : net.others).length + 1) + ' players)'; }
+function updateRoomInfo() {
+  if (net.mode === 'host') {
+    const names = Object.keys(net.players).map(id => net.players[id].name);
+    roomInfoEl.textContent = 'Room code: ' + net.code + (names.length ? '   Players: ' + net.name + ', ' + names.join(', ') : '   Waiting for friends. They choose Multiplayer, then Join.');
+  } else if (net.mode === 'guest') roomInfoEl.textContent = 'Playing online in room ' + net.code;
+  else roomInfoEl.textContent = '';
+}
+
+// ---- sending ----
+function netSend(msg) { if (net.mode === 'guest' && net.hostConn && net.hostConn.open) net.hostConn.send(msg); } // friend -> host
+function netSendTo(id, msg) { const c = net.conns[id]; if (c && c.open) c.send(msg); }                          // host -> one friend
+function netSendAll(msg, exceptId) { for (const id in net.conns) if (id !== exceptId) netSendTo(id, msg); }       // host -> every friend
+
+function playerList() {
+  const out = [{ id: 'host', name: net.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId() }];
+  for (const id in net.players) {
+    const q = net.players[id];
+    out.push({ id, name: q.name, x: r2(q.x), y: r2(q.y), z: r2(q.z), yaw: r2(q.yaw), pitch: r2(q.pitch), cr: q.cr, item: q.item });
+  }
+  return out;
+}
+function mobSnapshot() {
+  return mobs.map(m => [m.nid, m.type, r2(m.x), r2(m.y), r2(m.z), r2(m.rot),
+    (m.dying ? 1 : 0) | (m.sheared ? 2 : 0) | (m.tamed ? 4 : 0) | ((m.moving || m.chasing) ? 8 : 0), m.hp]);
+}
+// called every frame: sends what changed and, on the host, who is where
+function netTick(dt) {
+  if (net.mode === 'off') return;
+  net.t += dt;
+  if (net.outBlocks.length) {
+    const list = net.outBlocks.splice(0, net.outBlocks.length);
+    if (net.mode === 'host') netSendAll({ t: 'bs', list });
+    else netSend({ t: 'bs', list });
+  }
+  if (net.mode === 'host') {
+    if (net.t - net.lastPs > 0.1) { net.lastPs = net.t; netSendAll({ t: 'ps', list: playerList() }); }
+    if (net.t - net.lastMobs > 0.16) { net.lastMobs = net.t; netSendAll({ t: 'mobs', list: mobSnapshot() }); }
+    if (net.t - net.lastTime > 2) { net.lastTime = net.t; netSendAll({ t: 'time', v: worldTime }); }
+  } else if (net.t - net.lastP > 0.1) {
+    net.lastP = net.t;
+    netSend({ t: 'p', x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId() });
+  }
+}
+
+// ---- block changes from other players ----
+function netApplyBlocks(list) {
+  const redo = {};
+  net.applying = true;
+  try {
+    for (const e of list) {
+      const k = String(e[0]), idx = e[1], v = e[2];
+      const parts = k.split(','), cx = Number(parts[0]), cz = Number(parts[1]);
+      if (!(idx >= 0 && idx < CH * CH * HEIGHT) || !(v >= 0 && v < 64) || !isFinite(cx + cz)) continue;
+      const lx = idx % CH, lz = Math.floor(idx / CH) % CH, y = Math.floor(idx / (CH * CH));
+      const ch = chunks.get(ck(cx, cz));
+      if (ch) {
+        const was = ch.data[idx];
+        if (isPlant(was) && v !== was) removeSaplingAt(cx * CH + lx, y, cz * CH + lz);
+        ch.data[idx] = v;
+        redo[k] = [cx, cz];
+        if (lx === 0) redo[(cx - 1) + ',' + cz] = [cx - 1, cz];
+        if (lx === CH - 1) redo[(cx + 1) + ',' + cz] = [cx + 1, cz];
+        if (lz === 0) redo[cx + ',' + (cz - 1)] = [cx, cz - 1];
+        if (lz === CH - 1) redo[cx + ',' + (cz + 1)] = [cx, cz + 1];
+      }
+      recordEdit(cx, cz, idx, v); // remembered, but not sent on again
+    }
+  } finally { net.applying = false; }
+  for (const k in redo) remeshAt(redo[k][0], redo[k][1]);
+}
+
+// ---- how other players look ----
+function makeAvatar(name) {
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const mats = [];
+  const mk = (w, h, l, c) => { const m = new THREE.MeshBasicMaterial({ color: c }); mats.push(m); return new THREE.Mesh(boxGeo(w, h, l), m); };
+  const put = (mesh, x, y, z) => { mesh.position.set(x, y, z); g.add(mesh); return mesh; };
+  const shirt = [0x3a7ad0, 0xd05050, 0x50b060, 0xd0a030, 0x9050c0, 0x40b0b0, 0xe07a30][hashStr(name) % 7];
+  put(mk(0.5, 0.5, 0.5, 0xe0b090), 0, 1.62, 0);
+  put(mk(0.52, 0.14, 0.52, 0x4a3220), 0, 1.9, 0);
+  for (const sx of [-1, 1]) put(mk(0.08, 0.08, 0.02, 0x222222), sx * 0.12, 1.66, 0.255);
+  put(mk(0.5, 0.7, 0.28, shirt), 0, 1.0, 0);
+  const arms = [], legs = [];
+  for (const sx of [-1, 1]) {
+    const arm = new THREE.Group(); arm.position.set(sx * 0.36, 1.32, 0);
+    const am = mk(0.2, 0.66, 0.2, shirt); am.position.set(0, -0.3, 0); arm.add(am); g.add(arm); arms.push(arm);
+    const leg = new THREE.Group(); leg.position.set(sx * 0.13, 0.66, 0);
+    const lm = mk(0.22, 0.66, 0.22, 0x2a3a6a); lm.position.set(0, -0.33, 0); leg.add(lm); g.add(leg); legs.push(leg);
+  }
+  // a name tag that always faces the camera
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = 'rgba(0,0,0,0.55)'; cx.fillRect(0, 8, 256, 48);
+  cx.fillStyle = '#ffffff'; cx.font = 'bold 30px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText(name, 128, 33);
+  const tex = new THREE.CanvasTexture(cv);
+  const lmat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+  mats.push(lmat);
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.375), lmat);
+  label.position.set(0, 2.25, 0);
+  g.add(label);
+  return { group: g, label, mats, arms, legs, x: 0, y: 0, z: 0, walkT: 0 };
+}
+function removeAvatar(id) {
+  const av = net.avatars[id];
+  if (!av) return;
+  scene.remove(av.group);
+  av.mats.forEach(m => m.dispose());
+  delete net.avatars[id];
+}
+function clearAvatars() { for (const id in net.avatars) removeAvatar(id); net.avatars = {}; }
+function updateAvatars(dt) {
+  if (net.mode === 'off') return;
+  const view = net.mode === 'host' ? net.players : net.others;
+  for (const id in net.avatars) if (!view[id]) removeAvatar(id);
+  for (const id in view) {
+    const st = view[id];
+    let av = net.avatars[id];
+    if (!av) {
+      av = net.avatars[id] = makeAvatar(st.name || 'Player');
+      av.x = st.x; av.y = st.y; av.z = st.z;
+      scene.add(av.group);
+    }
+    const k = Math.min(1, dt * 12), ox = av.x, oz = av.z;
+    av.x += (st.x - av.x) * k; av.y += (st.y - av.y) * k; av.z += (st.z - av.z) * k;
+    const speed = dt > 0 ? Math.hypot(av.x - ox, av.z - oz) / dt : 0;
+    av.walkT += dt * Math.min(12, speed * 2.2);
+    const sw = speed > 0.3 ? Math.sin(av.walkT) * 0.8 : 0;
+    av.legs[0].rotation.x = sw; av.legs[1].rotation.x = -sw;
+    av.arms[0].rotation.x = -sw; av.arms[1].rotation.x = sw;
+    av.group.position.set(av.x, av.y, av.z);
+    av.group.rotation.y = (st.yaw || 0) + Math.PI;
+    av.group.scale.y = st.cr ? 0.88 : 1;
+    av.label.rotation.y = yaw - av.group.rotation.y;
+  }
+}
+
+// ---- animals on a friend's world are "puppets": the host moves the real ones and tells us where they are ----
+function clearPuppets() {
+  for (const nid in net.puppets) { const m = net.puppets[nid]; delete net.puppets[nid]; removeMob(m); }
+  mobs.filter(m => m.puppet).forEach(removeMob);
+  net.puppets = {};
+  net.deadNids = {};
+}
+function applyMobSnapshot(list) {
+  const seen = {}, now = performance.now();
+  for (const nid in net.deadNids) if (now - net.deadNids[nid] > 4000) delete net.deadNids[nid];
+  for (const e of list) {
+    const nid = e[0];
+    if (net.deadNids[nid] || !MOBS[e[1]]) continue;
+    seen[nid] = true;
+    let m = net.puppets[nid];
+    if (!m) {
+      m = spawnMob(e[1], e[2], e[3], e[4]);
+      m.puppet = true; m.nid = nid; net.puppets[nid] = m;
+    }
+    m.tx = e[2]; m.ty = e[3]; m.tz = e[4]; m.trot = e[5];
+    m.hp = e[7];
+    const f = e[6];
+    m.moving = !!(f & 8);
+    const sh = !!(f & 2);
+    if (sh !== m.sheared && m.type === 'sheep') applySheared(m, sh);
+    if ((f & 4) && !m.tamed) { m.tamed = true; m.wool.forEach(w => { w.visible = true; }); }
+    if ((f & 1) && !m.dying) { m.dying = true; m.dyingT = 0; m.mats.forEach(o => o.m.color.set(0xff3030)); }
+  }
+  for (const nid in net.puppets) if (!seen[nid]) removeMob(net.puppets[nid]);
+}
+function updatePuppets(dt) {
+  for (const nid in net.puppets) {
+    const m = net.puppets[nid], s = m.spec;
+    if (m.dying) { updateMob(m, dt); continue; } // plays the falling-over animation
+    if (m.tx === undefined) continue;
+    const k = Math.min(1, dt * 12), ox = m.x, oz = m.z;
+    m.x += (m.tx - m.x) * k; m.y += (m.ty - m.y) * k; m.z += (m.tz - m.z) * k;
+    let da = m.trot - m.rot;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    m.rot += da * k;
+    const moved = dt > 0 ? Math.hypot(m.x - ox, m.z - oz) / dt : 0;
+    m.walkT += dt * (s.flying ? 14 : Math.min(10, moved * 6));
+    if (s.fish) m.pivots[0].rotation.y = Math.sin(m.walkT) * 0.6;
+    else if (s.flying) { m.pivots[0].rotation.z = -Math.sin(m.walkT) * 0.8; m.pivots[1].rotation.z = Math.sin(m.walkT) * 0.8; }
+    else { const sw = moved > 0.15 ? Math.sin(m.walkT) * 0.7 : 0; for (let i = 0; i < m.pivots.length; i++) m.pivots[i].rotation.x = sw * m.signs[i]; }
+    m.group.position.set(m.x, m.y, m.z);
+    m.group.rotation.y = m.rot;
+    const c = chunks.get(ck(Math.floor(m.x / CH), Math.floor(m.z / CH)));
+    m.group.visible = !!(c && c.meshed) && Math.hypot(m.x - p.x, m.z - p.z) < 60;
+    tickFlash(m, dt);
+  }
+}
+
+// ---- hosting ----
+function startHosting() {
+  if (typeof Peer === 'undefined') { toast('Online play could not load. Check your internet connection.'); return; }
+  net.mode = 'host'; net.players = {}; net.conns = {}; net.outBlocks = []; net.name = myName();
+  net.myId = 'host';
+  openRoom(0);
+}
+function openRoom(attempt) {
+  net.code = makeCode();
+  const peer = new Peer('voxelgame-' + net.code);
+  net.peer = peer;
+  peer.on('open', () => { updateRoomInfo(); toast('Room code: ' + net.code + '. Friends choose Multiplayer, then Join.'); });
+  peer.on('connection', conn => {
+    conn.on('data', msg => hostGot(conn, msg));
+    conn.on('close', () => hostDrop(conn.peer));
+    conn.on('error', () => hostDrop(conn.peer));
+  });
+  peer.on('error', e => {
+    if (e && e.type === 'unavailable-id' && attempt < 5) { try { peer.destroy(); } catch (x) {} openRoom(attempt + 1); }
+    else toast('Could not open the room (' + (e && e.type) + '). Online play needs an internet connection.');
+  });
+}
+function hostSendWorld(conn) {
+  conn.send({ t: 'welcome', seed: cur.seed, gen: cur.gen || 1, name: cur.name, time: worldTime, spawn: [sp0.x, sp0.y, sp0.z], id: conn.peer, host: net.name });
+  const es = packEdits(); // every block that has been changed so far
+  let batch = [], size = 0;
+  for (const k in es) {
+    if (!es[k]) continue;
+    batch.push([k, es[k]]); size += es[k].length + k.length + 6;
+    if (size > 8000) { conn.send({ t: 'edits', list: batch }); batch = []; size = 0; }
+  }
+  if (batch.length) conn.send({ t: 'edits', list: batch });
+  conn.send({ t: 'ready' });
+}
+function mobByNid(id) { for (const m of mobs) if (m.nid === id && !m.puppet) return m; return null; }
+function hostGot(conn, msg) {
+  if (!msg || !msg.t) return;
+  const id = conn.peer;
+  if (msg.t === 'hello') {
+    if (Object.keys(net.players).length >= 7) { conn.send({ t: 'full' }); setTimeout(() => { try { conn.close(); } catch (e) {} }, 300); return; }
+    net.conns[id] = conn;
+    net.players[id] = { id, name: String(msg.name || 'Player').slice(0, 14), x: sp0.x, y: sp0.y, z: sp0.z, yaw: 0, pitch: 0, cr: false, item: 0 };
+    hostSendWorld(conn);
+    toast(net.players[id].name + ' joined');
+    updateRoomInfo();
+    return;
+  }
+  const q = net.players[id];
+  if (!q) return;
+  if (msg.t === 'p') {
+    if (isFinite(msg.x + msg.y + msg.z)) { q.x = msg.x; q.y = msg.y; q.z = msg.z; }
+    q.yaw = Number(msg.yaw) || 0; q.pitch = Number(msg.pitch) || 0; q.cr = !!msg.cr; q.item = msg.item | 0;
+  } else if (msg.t === 'bs' && Array.isArray(msg.list)) {
+    netApplyBlocks(msg.list);
+    netSendAll({ t: 'bs', list: msg.list }, id); // pass it on to the other friends
+  } else if (msg.t === 'hit') {
+    const m = mobByNid(msg.id);
+    if (m && !m.tamed && Math.hypot(m.x - q.x, m.z - q.z) < 8) damageMob(m, Math.min(12, Math.max(0, Number(msg.dmg) || 1)), Number(msg.fx) || q.x, Number(msg.fz) || q.z, id);
+  } else if (msg.t === 'shear') {
+    const m = mobByNid(msg.id);
+    if (m && m.type === 'sheep' && !m.sheared && !m.dying && Math.hypot(m.x - q.x, m.z - q.z) < 8) shearSheep(m, id);
+  } else if (msg.t === 'sap') {
+    const tp = msg.tp | 0;
+    if (tp >= 0 && tp <= 3 && isFinite(msg.x + msg.y + msg.z)) saplings.push({ x: msg.x | 0, y: msg.y | 0, z: msg.z | 0, t: tp, at: worldTime + 40 + Math.random() * 40 });
+  } else if (msg.t === 'bye') hostDrop(id);
+}
+function hostDrop(id) {
+  const q = net.players[id];
+  if (!q) return;
+  delete net.players[id];
+  const c = net.conns[id];
+  delete net.conns[id];
+  try { if (c) c.close(); } catch (e) {}
+  toast(q.name + ' left');
+  updateRoomInfo();
+}
+
+// ---- joining ----
+function joinRoom(raw) {
+  if (typeof Peer === 'undefined') { mpNote('Online play could not load. Check your internet connection.'); return; }
+  const code = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 6) { mpNote('Room codes are 6 letters and numbers.'); return; }
+  netLeave();
+  mpNote('Connecting...');
+  net.mode = 'guest'; net.code = code; net.name = myName(); net.others = {}; net.outBlocks = []; net.pending = null;
+  const peer = new Peer();
+  net.peer = peer;
+  const giveUp = setTimeout(() => {
+    if (net.mode === 'guest' && !inGame) { mpNote('Could not connect. Check the code, and that your friend is hosting.'); netLeave(); }
+  }, 20000);
+  peer.on('open', () => {
+    const conn = peer.connect('voxelgame-' + code, { reliable: true });
+    net.hostConn = conn;
+    conn.on('open', () => { conn.send({ t: 'hello', name: net.name }); });
+    conn.on('data', msg => guestGot(msg));
+    conn.on('close', () => {
+      clearTimeout(giveUp);
+      if (net.mode === 'guest') {
+        const wasIn = inGame;
+        if (wasIn) quitToTitle(); else netLeave();
+        if (wasIn) mpNote('The host left the game.');
+      }
+    });
+  });
+  peer.on('error', e => {
+    clearTimeout(giveUp);
+    mpNote(e && e.type === 'peer-unavailable' ? 'No room with that code.' : 'Connection problem (' + (e && e.type) + ').');
+    netLeave();
+  });
+}
+function guestGot(msg) {
+  if (!msg || !msg.t) return;
+  if (msg.t === 'welcome') { net.myId = msg.id; net.pending = { seed: msg.seed, gen: msg.gen, name: msg.name, time: msg.time, spawn: msg.spawn, host: msg.host, edits: {} }; }
+  else if (msg.t === 'edits' && net.pending) { for (const e of msg.list) net.pending.edits[e[0]] = e[1]; }
+  else if (msg.t === 'ready') guestStart();
+  else if (msg.t === 'full') { mpNote('That room is full.'); netLeave(); }
+  else if (!inGame) return;
+  else if (msg.t === 'bs') netApplyBlocks(msg.list);
+  else if (msg.t === 'ps') {
+    const seen = {};
+    for (const e of msg.list) { if (e.id === net.myId) continue; seen[e.id] = true; net.others[e.id] = e; }
+    for (const id in net.others) if (!seen[id]) delete net.others[id];
+  }
+  else if (msg.t === 'mobs') applyMobSnapshot(msg.list);
+  else if (msg.t === 'time') worldTime = msg.v;
+  else if (msg.t === 'hurt') playerBitten(Number(msg.dmg) || 1);
+  else if (msg.t === 'loot') { for (const id of msg.ids) if (ITEMS[id]) dropItem(id, msg.x, msg.y, msg.z); }
+}
+function guestStart() {
+  const w = net.pending;
+  net.pending = null;
+  if (!w) return;
+  startWorld({
+    id: 'online-' + net.code, name: 'Online: ' + w.name, seed: w.seed, gen: w.gen, time: w.time,
+    spawn: { x: w.spawn[0], y: w.spawn[1], z: w.spawn[2] }, player: { x: w.spawn[0], y: w.spawn[1], z: w.spawn[2], yaw: 0, pitch: 0 },
+    edits: w.edits, remote: true, created: Date.now()
+  });
+  toast('Joined ' + w.host + "'s world");
+  updateRoomInfo();
+}
+function netLeave() {
+  if (net.mode === 'guest') netSend({ t: 'bye' });
+  for (const id in net.conns) { try { net.conns[id].close(); } catch (e) {} }
+  try { if (net.hostConn) net.hostConn.close(); } catch (e) {}
+  try { if (net.peer) net.peer.destroy(); } catch (e) {}
+  net.mode = 'off'; net.peer = null; net.conns = {}; net.hostConn = null; net.players = {}; net.others = {};
+  net.outBlocks = []; net.pending = null; net.code = '';
+  clearAvatars(); clearPuppets();
+  updateRoomInfo();
+}
+
+// ---- the multiplayer screen ----
+function renderHostList() {
+  const list = loadIndex().sort((a, b) => b.played - a.played);
+  const box = document.getElementById('hostList');
+  box.innerHTML = '';
+  if (!list.length) box.appendChild(document.createTextNode('You have no saved worlds yet.'));
+  list.forEach(w => {
+    const row = document.createElement('div'); row.className = 'wrow';
+    const info = document.createElement('div'); info.className = 'wi';
+    const nm = document.createElement('div'); nm.className = 'wn'; nm.textContent = w.name;
+    info.appendChild(nm);
+    const host = document.createElement('button'); host.textContent = 'Host';
+    host.addEventListener('click', () => hostWorld(w.id));
+    row.appendChild(info); row.appendChild(host);
+    box.appendChild(row);
+  });
+}
+function hostWorld(id) {
+  if (typeof Peer === 'undefined') { mpNote('Online play could not load. Check your internet connection.'); return; }
+  const rec = readWorld(id);
+  if (!rec) { mpNote('That save could not be loaded.'); return; }
+  startWorld(rec);
+  startHosting();
+}
+document.getElementById('btnJoin').addEventListener('click', () => joinRoom(mpCodeEl.value));
+document.getElementById('btnHostNew').addEventListener('click', () => {
+  if (typeof Peer === 'undefined') { mpNote('Online play could not load. Check your internet connection.'); return; }
+  startWorld(createWorld(''));
+  startHosting();
+});
+document.getElementById('btnMpBack').addEventListener('click', () => showMenu('home'));
+addEventListener('beforeunload', () => { if (net.mode !== 'off') netLeave(); });
 
 // ================= Day and night =================
 const sunMesh = new THREE.Mesh(new THREE.PlaneGeometry(46, 46), new THREE.MeshBasicMaterial({ color: 0xfff1a8, fog: false, depthWrite: false, side: THREE.DoubleSide }));
@@ -2926,40 +3541,56 @@ function clockText() {
 // ================= Main loop =================
 let last = performance.now(), frames = 0, fpsTimer = 0, fps = 0, frameNo = 0;
 // everything that happens while you are in a world (it freezes while the pause screen is up)
-function gameTick(dt) {
+// everything about you: moving, mining, your items
+function playerTick(dt) {
   update(dt);
   updateSurvival(dt);
   updateMining(dt);
   updateFishing(dt);
-  for (let i = mobs.length - 1; i >= 0; i--) {
-    const m = mobs[i];
-    const c = chunks.get(ck(Math.floor(m.x / CH), Math.floor(m.z / CH)));
-    if (c && c.meshed) updateMob(m, dt);
-    m.group.visible = Math.hypot(m.x - p.x, m.z - p.z) < 60;
-  }
   updateDrops(dt);
   updateChunks(8);
-  if (frameNo % 60 === 0) {
-    pruneChunks();
-    for (let i = mobs.length - 1; i >= 0; i--) {
-      if (Math.hypot(mobs[i].x - p.x, mobs[i].z - p.z) > (RENDER + 0.5) * CH && !mobs[i].tamed) removeMob(mobs[i]);
-    }
-  }
   const r = raycastBlocks(6);
   if (r) { wire.visible = true; wire.position.set(r.hit[0] + 0.5, r.hit[1] + 0.5, r.hit[2] + 0.5); }
   else wire.visible = false;
-  updateDayNight(dt);
-  updateSaplings(dt);
   updateParticles(dt);
+}
+// everything about the world: animals, time, other players. This keeps going for your friends while you are on the pause screen.
+function worldTick(dt) {
+  if (net.mode === 'guest') updatePuppets(dt);
+  else {
+    for (let i = mobs.length - 1; i >= 0; i--) {
+      const m = mobs[i];
+      const c = chunks.get(ck(Math.floor(m.x / CH), Math.floor(m.z / CH)));
+      if (c && c.meshed) updateMob(m, dt);
+      m.group.visible = Math.hypot(m.x - p.x, m.z - p.z) < 60;
+    }
+  }
+  if (frameNo % 60 === 0) {
+    pruneChunks();
+    if (net.mode !== 'guest') {
+      for (let i = mobs.length - 1; i >= 0; i--) {
+        const dd = nearestPlayerDist(mobs[i].x, mobs[i].z);
+        if (dd !== Infinity && dd > (RENDER + 0.5) * CH && !mobs[i].tamed) removeMob(mobs[i]);
+      }
+    }
+  }
+  updateDayNight(dt);
+  if (net.mode !== 'guest') updateSaplings(dt);
   saveTimer += dt;
   if (saveTimer > 15) { saveTimer = 0; saveWorld(false); }
+  netTick(dt);
+  updateAvatars(dt);
 }
+function gameTick(dt) { playerTick(dt); worldTick(dt); }
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   frameNo++;
   pollPad(dt);
-  if (inGame && !dead && (active() || panelOpen)) gameTick(dt);
+  if (inGame) {
+    if (!dead && (active() || panelOpen)) gameTick(dt);
+    else if (net.mode !== 'off') worldTick(dt); // other players are still playing
+  }
   if (!menuOpen) renderer.render(scene, camera);
   if (inGame) {
     frames++; fpsTimer += dt;
@@ -2967,7 +3598,7 @@ function loop(now) {
       fps = Math.round(frames / fpsTimer); frames = 0; fpsTimer = 0;
       let n = 0;
       for (const c of chunks.values()) if (c.meshed) n++;
-      infoEl.textContent = clockText() + (isRain(Math.floor(p.x), Math.floor(p.z)) ? '  Rainforest' : '') + '   FPS ' + fps + '   Chunks ' + n + '   Animals ' + mobs.length + '\nX ' + Math.floor(p.x) + '  Y ' + Math.floor(p.y) + '  Z ' + Math.floor(p.z);
+      infoEl.textContent = clockText() + netInfo() + (isRain(Math.floor(p.x), Math.floor(p.z)) ? '  Rainforest' : '') + '   FPS ' + fps + '   Chunks ' + n + '   Animals ' + mobs.length + '\nX ' + Math.floor(p.x) + '  Y ' + Math.floor(p.y) + '  Z ' + Math.floor(p.z);
     }
   }
   requestAnimationFrame(loop);
