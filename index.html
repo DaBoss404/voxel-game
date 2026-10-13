@@ -54,7 +54,7 @@
   .slot .dur i{display:block;height:100%}
   .sw{width:26px;height:26px;border-radius:3px;border:2px solid rgba(0,0,0,.4);box-sizing:border-box;flex:none}
   canvas.ic{width:28px;height:28px;image-rendering:pixelated}
-  #panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,94vw);max-height:84vh;overflow:auto;background:rgba(25,25,25,.96);color:#fff;border-radius:10px;padding:14px 18px;display:none;box-sizing:border-box}
+  #panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(960px,96vw);max-height:84vh;overflow:auto;background:rgba(25,25,25,.96);color:#fff;border-radius:10px;padding:14px 18px;display:none;box-sizing:border-box}
   #panel h2{margin:0 0 8px}
   #panel h3{margin:6px 0;font-size:15px;color:#bbb}
   #pcols{display:flex;gap:18px;flex-wrap:wrap}
@@ -70,6 +70,19 @@
   .row .eq{background:#3a6a9a;padding:4px 8px;font-size:12px}
   .hint{color:#999;font-size:12px;margin:10px 0 0}
   .padfocus{outline:3px solid #ffd54a;outline-offset:1px}
+  #pcols>div:first-child{flex:0 0 auto}
+  .grid{display:grid;grid-template-columns:repeat(9,46px);gap:3px;margin:3px 0 8px}
+  .armorRow{display:grid;grid-template-columns:repeat(4,46px);gap:3px;margin:3px 0 8px}
+  .gs{position:relative;width:46px;height:46px;background:rgba(255,255,255,.1);border:2px solid #444;border-radius:5px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:22px}
+  .gs:hover{border-color:#aaa}
+  .gs.gsel{border-color:#fff}
+  .gs.armor{border-color:#5a6a8a}
+  .gs.emptyarmor{opacity:.55;font-size:13px}
+  .gs .cnt{position:absolute;right:2px;bottom:0;font-size:11px;color:#fff;text-shadow:1px 1px 2px #000}
+  .gs .dur{position:absolute;left:3px;right:3px;bottom:2px;height:3px;background:#222}
+  .gs .dur i{display:block;height:100%}
+  #heldLine{font-size:13px;color:#ffd54a;margin:4px 0;max-width:430px;line-height:1.35}
+  #heldIcon{position:fixed;pointer-events:none;z-index:70;display:none;width:36px;height:36px}
   #death{position:fixed;inset:0;z-index:58;display:none;align-items:center;justify-content:center;background:rgba(120,0,0,.6);color:#fff}
   .dbox{width:min(420px,90vw);text-align:center}
   .dbox h1{font-size:52px;margin:0 0 6px;text-shadow:3px 3px 0 rgba(0,0,0,.5)}
@@ -98,6 +111,7 @@
   </div>
   <p class="hint">Press E or Esc to close</p>
 </div>
+<div id="heldIcon"></div>
 <div id="start">
   <div id="startBox">
     <div id="startTitle">Click to play</div>
@@ -110,6 +124,8 @@
   <div class="box" id="mHome">
     <h1>VOXEL GAME</h1>
     <div class="tag">Build. Explore. Survive.</div>
+    <div class="note">Your name (other players see it above your head)</div>
+    <div class="newRow"><input id="mpName" maxlength="14" placeholder="Your name"></div>
     <button class="big" id="btnSingle">Single Player</button>
     <button class="big" id="btnMulti">Multiplayer</button>
     <div class="note" id="multiNote"></div>
@@ -123,8 +139,7 @@
   </div>
   <div class="box" id="mMulti" style="display:none">
     <h2>Multiplayer</h2>
-    <div class="note">Your name</div>
-    <div class="newRow"><input id="mpName" maxlength="14" placeholder="Your name"></div>
+    <div class="note" id="mpAs"></div>
     <div class="note">Join a friend with their room code</div>
     <div class="newRow"><input id="mpCode" maxlength="6" placeholder="ROOM CODE" style="text-transform:uppercase"><button class="big" id="btnJoin">Join</button></div>
     <div class="note" id="mpNote"></div>
@@ -164,6 +179,7 @@ const WOLF_ATTACKS = true, WOLF_AGGRO = 5;
 const FOREST_DENSITY = 0.018, SPARSE_DENSITY = 0.003;
 // Rainforest: bigger JUNGLE_DENSITY = thicker jungle.
 const JUNGLE_DENSITY = 0.028;
+const MAX_TOUCANS = 3, TOUCAN_CHANCE = 0.08; // toucans are rare. Bigger numbers = more toucans.
 const TOUCANS_ATTACK = true; // rainforest toucans always attack. Set to false to make them harmless.
 let RAIN_ON = true; // rainforests only appear in worlds made with this version, so older worlds keep their terrain
 
@@ -827,7 +843,7 @@ function boxCollides(x, y, z, r, h) {
 
 // ================= Inventory =================
 // 9 slots, like Minecraft. Stackable items hold up to 64. Tools, armor, shears and rods take one slot each and keep their own durability.
-const NSLOTS = 9, MAXSTACK = 64;
+const HOTBAR = 9, NSLOTS = 36, MAXSTACK = 64; // 9 hotbar slots + 27 inventory slots
 const invSlots = new Array(NSLOTS).fill(null); // {id, n} for stacks, {id, g} for single items
 const equipped = { helmet: null, chest: null, legs: null, boots: null };
 let uidN = 1;
@@ -958,6 +974,76 @@ function wearArmor() {
   refreshUI(); refreshStats();
 }
 
+// ================= The inventory grid (press E) =================
+// Click an item to pick it up, click a slot to put it down. Right-click takes half / puts down one. Shift-click moves a stack between the hotbar and the inventory (or puts armor on).
+let held = null; // the stack you are carrying around with the mouse
+function slotClick(i, secondary, shift) {
+  const s = invSlots[i];
+  if (shift) { if (!held) quickMove(i); refreshUI(); return; }
+  if (!held) {
+    if (!s) return;
+    if (secondary && !s.g && s.n > 1) {
+      const half = Math.ceil(s.n / 2);
+      held = { id: s.id, n: half };
+      s.n -= half;
+    } else { held = s; invSlots[i] = null; }
+  } else if (!s) {
+    if (secondary && !held.g && held.n > 1) { invSlots[i] = { id: held.id, n: 1 }; held.n--; }
+    else { invSlots[i] = held; held = null; }
+  } else if (!held.g && !s.g && s.id === held.id) {
+    const room = MAXSTACK - s.n;
+    const t = secondary ? Math.min(1, room, held.n) : Math.min(room, held.n);
+    s.n += t; held.n -= t;
+    if (held.n <= 0) held = null;
+  } else if (!secondary) { invSlots[i] = held; held = s; }
+  refreshUI();
+}
+function quickMove(i) {
+  const s = invSlots[i];
+  if (!s) return;
+  if (s.g && ARMOR[s.id]) { equipSlot(i); return; } // armor goes straight on
+  const lo = i < HOTBAR ? HOTBAR : 0, hi = i < HOTBAR ? NSLOTS : HOTBAR;
+  if (!s.g) {
+    for (let j = lo; j < hi && s.n > 0; j++) {
+      const t = invSlots[j];
+      if (t && !t.g && t.id === s.id && t.n < MAXSTACK) { const m = Math.min(MAXSTACK - t.n, s.n); t.n += m; s.n -= m; }
+    }
+    if (s.n <= 0) { invSlots[i] = null; return; }
+  }
+  for (let j = lo; j < hi; j++) if (!invSlots[j]) { invSlots[j] = s; invSlots[i] = null; return; }
+}
+// click an armor slot: put on the armor you are holding, or take off what you are wearing
+function armorClick(slot) {
+  const cur = equipped[slot];
+  if (held && held.g && ARMOR[held.id] && ARMOR[held.id].slot === slot) { equipped[slot] = held.g; held = cur ? { id: cur.id, g: cur } : null; }
+  else if (!held && cur) { held = { id: cur.id, g: cur }; equipped[slot] = null; }
+  refreshUI(); refreshStats();
+}
+// closing the inventory puts whatever you are holding back (or drops it if there is no room)
+function returnHeld() {
+  if (!held) return;
+  const h = held;
+  held = null;
+  if (h.g) {
+    if (!addGearObj(h.g)) dropItem(h.id, p.x, p.y + 1, p.z, { g: h.g, vy: 2.5, vx: 0, vz: 0, delay: 1.6 });
+  } else {
+    const left = add(h.id, h.n);
+    if (left > 0) dropExtra(h.id, left);
+  }
+}
+function dropHeld() {
+  if (!held) return;
+  const h = held;
+  held = null;
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const px = p.x + dir.x * 0.7, py = p.y + 1.4, pz = p.z + dir.z * 0.7;
+  const o = { vx: dir.x * 4, vy: 2.5, vz: dir.z * 4, delay: 1.6 };
+  if (h.g) { o.g = h.g; dropItem(h.id, px, py, pz, o); }
+  else for (let k = 0; k < h.n; k++) dropItem(h.id, px, py, pz, o);
+  refreshUI();
+}
+
 // ================= Recipes =================
 const PL = [12, 13, 14, 28];
 const RECIPES = [
@@ -1009,6 +1095,7 @@ const startEl = document.getElementById('start');
 const waterEl = document.getElementById('water');
 const hurtEl = document.getElementById('hurt');
 const infoEl = document.getElementById('info');
+const heldIconEl = document.getElementById('heldIcon');
 let panelOpen = false, panelMode = 'inv', toastT = null;
 
 function toast(m) {
@@ -1104,7 +1191,7 @@ function icon(id) {
 }
 function refreshUI() {
   hotbarEl.innerHTML = '';
-  for (let i = 0; i < NSLOTS; i++) {
+  for (let i = 0; i < HOTBAR; i++) {
     const s = invSlots[i];
     const el = document.createElement('div');
     el.className = 'slot' + (i === sel ? ' sel' : '');
@@ -1145,39 +1232,85 @@ function mkBtn(label, cls, fn, disabled) {
   b.addEventListener('click', fn);
   return b;
 }
+function updateHeldIcon() {
+  heldIconEl.innerHTML = '';
+  if (!held) { heldIconEl.style.display = 'none'; return; }
+  heldIconEl.appendChild(icon(held.id));
+  heldIconEl.style.display = 'block';
+}
+addEventListener('mousemove', (e) => {
+  if (held) { heldIconEl.style.left = (e.clientX + 8) + 'px'; heldIconEl.style.top = (e.clientY + 8) + 'px'; }
+});
+function durBar(g, id) {
+  const mx = maxDur(id);
+  if (g.dur >= mx) return null;
+  const f = g.dur / mx;
+  const bar = document.createElement('div'); bar.className = 'dur';
+  const fill = document.createElement('i');
+  fill.style.width = (f * 100) + '%';
+  fill.style.background = f > 0.5 ? '#4cd04c' : (f > 0.25 ? '#e0c030' : '#e04040');
+  bar.appendChild(fill);
+  return bar;
+}
+function slotButton(i, v) {
+  const s = invSlots[i];
+  const b = document.createElement('button');
+  b.className = 'gs' + (i < HOTBAR && i === sel ? ' gsel' : '');
+  b.dataset.slot = i; b.dataset.v = v;
+  b.title = s ? ITEMS[s.id].n + (s.g ? ' (' + s.g.dur + '/' + maxDur(s.id) + ')' : (s.n > 1 ? ' x' + s.n : '')) : (i < HOTBAR ? 'Hotbar slot ' + (i + 1) : 'Empty');
+  if (s) {
+    b.appendChild(icon(s.id));
+    if (!s.g && s.n > 1) { const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = s.n; b.appendChild(ct); }
+    else if (s.g) { const bar = durBar(s.g, s.id); if (bar) b.appendChild(bar); }
+  }
+  b.addEventListener('click', (e) => slotClick(i, false, !!e.shiftKey));
+  b.addEventListener('contextmenu', (e) => { e.preventDefault(); slotClick(i, true, false); });
+  return b;
+}
 function renderPanel() {
   ptitle.textContent = panelMode === 'table' ? 'Crafting Table' : 'Inventory';
   invList.innerHTML = '';
-  const eh = document.createElement('div'); eh.className = 'sub';
-  eh.textContent = 'Armor worn (' + armorPoints() + ' points)';
-  invList.appendChild(eh);
-  [['helmet', 'Helmet'], ['chest', 'Chestplate'], ['legs', 'Leggings'], ['boots', 'Boots']].forEach(sl => {
+  const sub = (t) => { const d = document.createElement('div'); d.className = 'sub'; d.textContent = t; return d; };
+  invList.appendChild(sub('Armor worn (' + armorPoints() + ' points)'));
+  const ar = document.createElement('div'); ar.className = 'armorRow';
+  [['helmet', 'H', 'Helmet'], ['chest', 'C', 'Chestplate'], ['legs', 'L', 'Leggings'], ['boots', 'B', 'Boots']].forEach(sl => {
     const g = equipped[sl[0]];
-    if (g) {
-      invList.appendChild(mkRow(icon(g.id), ITEMS[g.id].n, 'Durability ' + g.dur + '/' + maxDur(g.id), [mkBtn('Take off', 'eq', () => unequip(sl[0]))]));
-    } else {
-      invList.appendChild(mkRow(null, sl[1] + ': empty', '', []));
-    }
+    const b = document.createElement('button');
+    b.className = 'gs armor' + (g ? '' : ' emptyarmor');
+    b.dataset.armor = sl[0];
+    b.title = g ? ITEMS[g.id].n + ' (' + g.dur + '/' + maxDur(g.id) + ')' : sl[2] + ' slot';
+    if (g) { b.appendChild(icon(g.id)); const bar = durBar(g, g.id); if (bar) b.appendChild(bar); }
+    else b.textContent = sl[1];
+    b.addEventListener('click', () => armorClick(sl[0]));
+    ar.appendChild(b);
   });
-  const ih = document.createElement('div'); ih.className = 'sub'; ih.textContent = 'Your 9 slots';
-  invList.appendChild(ih);
-  for (let i = 0; i < NSLOTS; i++) {
-    const s = invSlots[i];
-    if (!s) { invList.appendChild(mkRow(null, (i + 1) + '.  empty', '', [])); continue; }
-    const btns = [mkBtn(i === sel ? 'Holding' : 'Hold', 'eq', () => { sel = i; refreshUI(); }, i === sel)];
-    if (s.g && ARMOR[s.id]) btns.push(mkBtn('Equip', 'eq', () => equipSlot(i)));
-    btns.push(mkBtn('Drop', 'drop', () => dropSlot(i)));
-    const label = (i + 1) + '.  ' + ITEMS[s.id].n + (s.g ? '' : '  x' + s.n);
-    const sub = s.g ? 'Durability ' + s.g.dur + '/' + maxDur(s.id) : '';
-    invList.appendChild(mkRow(icon(s.id), label, sub, btns));
+  invList.appendChild(ar);
+  const hl = document.createElement('div'); hl.id = 'heldLine';
+  hl.textContent = held
+    ? 'Holding ' + ITEMS[held.id].n + (held.g ? '' : ' x' + held.n) + '. Click a slot to put it down.'
+    : 'Click an item to pick it up, then click a slot to put it down. Right-click takes half. Shift-click moves it between the hotbar and the inventory.';
+  invList.appendChild(hl);
+  if (held) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.appendChild(mkBtn('Drop what I am holding', 'drop', dropHeld));
+    invList.appendChild(row);
   }
+  invList.appendChild(sub('Inventory'));
+  const inv = document.createElement('div'); inv.className = 'grid';
+  for (let i = HOTBAR; i < NSLOTS; i++) inv.appendChild(slotButton(i, i - HOTBAR));
+  invList.appendChild(inv);
+  invList.appendChild(sub('Hotbar (keys 1-9)'));
+  const hb = document.createElement('div'); hb.className = 'grid';
+  for (let i = 0; i < HOTBAR; i++) hb.appendChild(slotButton(i, 27 + i));
+  invList.appendChild(hb);
   recipesEl.innerHTML = '';
   for (const r of RECIPES) {
     const blocked = r.table && panelMode !== 'table';
-    const sub = needText(r) + (blocked ? '  (needs a crafting table)' : '');
-    recipesEl.appendChild(mkRow(icon(r.out), r.n + (r.q > 1 ? ' x' + r.q : ''), sub,
+    const sub2 = needText(r) + (blocked ? '  (needs a crafting table)' : '');
+    recipesEl.appendChild(mkRow(icon(r.out), r.n + (r.q > 1 ? ' x' + r.q : ''), sub2,
       [mkBtn('Craft', '', () => craft(r), !canCraft(r) || blocked)]));
   }
+  updateHeldIcon();
 }
 function locked() { return document.pointerLockElement === renderer.domElement; }
 // true when the mouse has the game, or a controller is playing
@@ -1192,6 +1325,8 @@ function openPanel(mode) {
 function closePanel(relock) {
   panelOpen = false;
   panelEl.style.display = 'none';
+  returnHeld();
+  updateHeldIcon();
   startEl.style.display = (pad.playing || !inGame) ? 'none' : 'flex';
   if (relock && !pad.playing) renderer.domElement.requestPointerLock();
 }
@@ -1678,7 +1813,7 @@ function trySpawnMobs(c) {
     }
   }
   // toucans live in the rainforest, up in the treetops
-  if (RAIN_ON && countMobs(['toucan']) < 8 && Math.random() < 0.35) {
+  if (RAIN_ON && countMobs(['toucan']) < MAX_TOUCANS && Math.random() < TOUCAN_CHANCE) {
     const tlx = Math.floor(Math.random() * CH), tlz = Math.floor(Math.random() * CH);
     const twx = c.cx * CH + tlx, twz = c.cz * CH + tlz, tht = c.top[tlx + CH * tlz];
     const tty = tht + 10 + Math.floor(Math.random() * 5);
@@ -2569,14 +2704,14 @@ addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code.startsWith('Digit')) {
     const n = Number(e.code.slice(5));
-    if (n >= 1 && n <= NSLOTS) { sel = n - 1; refreshUI(); }
+    if (n >= 1 && n <= HOTBAR) { sel = n - 1; refreshUI(); }
   }
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 addEventListener('wheel', (e) => {
   if (!locked()) return;
-  sel = (sel + (e.deltaY > 0 ? 1 : -1) + NSLOTS) % NSLOTS;
+  sel = (sel + (e.deltaY > 0 ? 1 : -1) + HOTBAR) % HOTBAR;
   refreshUI();
 });
 startEl.addEventListener('click', (e) => { if (e.target && e.target.tagName === 'BUTTON') return; lockPointer(); });
@@ -2688,19 +2823,44 @@ function pollPad(dt) {
     }
     const btns = Array.prototype.slice.call(panelEl.querySelectorAll('button:not(:disabled)'));
     padRepeat -= dt;
-    const vy = ax(1);
-    let step = 0;
-    if (pressed(12)) { step = -1; padRepeat = 0.3; }
-    else if (pressed(13)) { step = 1; padRepeat = 0.3; }
-    else if (padRepeat <= 0 && (cur[12] || vy < -0.6)) { step = -1; padRepeat = 0.14; }
-    else if (padRepeat <= 0 && (cur[13] || vy > 0.6)) { step = 1; padRepeat = 0.14; }
+    const vx = ax(0), vy = ax(1);
+    let sx = 0, sy = 0;
+    if (pressed(12)) { sy = -1; padRepeat = 0.3; }
+    else if (pressed(13)) { sy = 1; padRepeat = 0.3; }
+    else if (pressed(14)) { sx = -1; padRepeat = 0.3; }
+    else if (pressed(15)) { sx = 1; padRepeat = 0.3; }
+    else if (padRepeat <= 0) {
+      if (cur[12] || vy < -0.6) { sy = -1; padRepeat = 0.14; }
+      else if (cur[13] || vy > 0.6) { sy = 1; padRepeat = 0.14; }
+      else if (cur[14] || vx < -0.6) { sx = -1; padRepeat = 0.14; }
+      else if (cur[15] || vx > 0.6) { sx = 1; padRepeat = 0.14; }
+    }
     if (btns.length) {
-      if (step) padFocus = (padFocus + step + btns.length) % btns.length;
       padFocus = Math.max(0, Math.min(padFocus, btns.length - 1));
+      if (sx || sy) {
+        const fb = btns[padFocus];
+        const v = fb.dataset && fb.dataset.v !== undefined ? Number(fb.dataset.v) : -1;
+        if (v >= 0) { // moving around the inventory grid
+          let row = Math.floor(v / 9) + sy;
+          const col = Math.max(0, Math.min(8, (v % 9) + sx));
+          if (row < 0) row = 0;
+          if (row > 3) { // below the hotbar: on to the recipes
+            const nxt = btns.findIndex(b => !(b.dataset && (b.dataset.v !== undefined || b.dataset.armor !== undefined)));
+            if (nxt >= 0) padFocus = nxt;
+          } else {
+            const tgt = btns.findIndex(b => b.dataset && b.dataset.v !== undefined && Number(b.dataset.v) === row * 9 + col);
+            if (tgt >= 0) padFocus = tgt;
+          }
+        } else if (sy) padFocus = (padFocus + sy + btns.length) % btns.length;
+      }
       panelEl.querySelectorAll('.padfocus').forEach(b => b.classList.remove('padfocus'));
       btns[padFocus].classList.add('padfocus');
-      if (step) btns[padFocus].scrollIntoView({ block: 'nearest' });
-      if (pressed(0)) btns[padFocus].click();
+      if (sx || sy) btns[padFocus].scrollIntoView({ block: 'nearest' });
+      const fb2 = btns[padFocus];
+      const isSlot = !!(fb2.dataset && fb2.dataset.slot !== undefined);
+      if (pressed(0)) fb2.click();
+      else if (isSlot && pressed(2)) slotClick(Number(fb2.dataset.slot), true, false);  // X: take half / put down one
+      else if (isSlot && pressed(5)) slotClick(Number(fb2.dataset.slot), false, true);  // RB: shift-click
     }
     padPrev = cur;
     return;
@@ -2727,8 +2887,8 @@ function pollPad(dt) {
   if (pad.my < 0.3) pad.sprint = false;
   if (pressed(2)) dropSlot(sel);
   if (pressed(3)) openPanel('inv');
-  if (pressed(4) || pressed(14)) { sel = (sel + NSLOTS - 1) % NSLOTS; refreshUI(); }
-  if (pressed(5) || pressed(15)) { sel = (sel + 1) % NSLOTS; refreshUI(); }
+  if (pressed(4) || pressed(14)) { sel = (sel + HOTBAR - 1) % HOTBAR; refreshUI(); }
+  if (pressed(5) || pressed(15)) { sel = (sel + 1) % HOTBAR; refreshUI(); }
   if (pressed(7)) attackDown();
   if (released(7)) attackUp();
   if (pressed(6)) useDown();
@@ -2905,12 +3065,18 @@ function deleteWorld(id) {
   writeIndex(loadIndex().filter(w => w.id !== id));
   try { localStorage.removeItem(worldKey(id)); } catch (e) {}
 }
+// the items to save: what you carry, plus whatever the mouse is holding right now (put in the first free slot)
+function savedSlots() {
+  const sl = invSlots.slice();
+  if (held) { const e = sl.indexOf(null); if (e >= 0) sl[e] = held; }
+  return sl;
+}
 function saveWorld(manual) {
   if (!cur || !inGame || cur.remote) return; // a friend's world is saved on their computer
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: invSlots, equipped: equipped, edits: packEdits(), saplings: saplings,
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packEdits(), saplings: saplings,
     pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp }))
   };
   if (writeWorld(rec)) {
@@ -2932,7 +3098,7 @@ function resetWorldState() {
   cancelFishing();
   for (let i = 0; i < NSLOTS; i++) invSlots[i] = null;
   for (const k in equipped) equipped[k] = null;
-  uidN = 1; sel = 0;
+  uidN = 1; sel = 0; held = null; heldIconEl.style.display = 'none';
   health = 20; hunger = 20; hungerT = 0; regenT = 0; starveT = 0; fallPeak = null;
   vy = 0; onGround = false; crouching = false; sprinting = false;
   edits = {}; editStr = {}; dirtyChunks = {};
@@ -3004,7 +3170,7 @@ function showMenu(which) {
   document.getElementById('mWorlds').style.display = which === 'worlds' ? 'block' : 'none';
   document.getElementById('mMulti').style.display = which === 'multi' ? 'block' : 'none';
   if (which === 'worlds') renderWorlds();
-  if (which === 'multi') renderHostList();
+  if (which === 'multi') { renderHostList(); document.getElementById('mpAs').textContent = 'You will appear as ' + myName() + '. You can change your name on the title screen.'; }
   padFocus = 0;
 }
 function quitToTitle() {
