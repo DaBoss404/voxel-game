@@ -82,6 +82,36 @@
   .gs .dur{position:absolute;left:3px;right:3px;bottom:2px;height:3px;background:#222}
   .gs .dur i{display:block;height:100%}
   #heldLine{font-size:13px;color:#ffd54a;margin:4px 0;max-width:430px;line-height:1.35}
+  .topRow{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin:2px 0 8px}
+  .armorCol{display:flex;flex-direction:column;gap:3px}
+  .previewCol{text-align:center;font-size:12px;color:#ccc}
+  .previewCol canvas{width:96px;height:144px;image-rendering:pixelated;background:rgba(0,0,0,.3);border-radius:6px;display:block;margin-bottom:2px}
+  .craftCol{display:flex;flex-direction:column;gap:4px}
+  .craftRow{display:flex;align-items:center;gap:8px}
+  .cgrid{display:grid;gap:3px}
+  .cgrid.c2{grid-template-columns:repeat(2,46px)}
+  .cgrid.c3{grid-template-columns:repeat(3,46px)}
+  .arrow{font-size:24px;color:#aaa}
+  .gs.result{border-color:#c8a030}
+  .bookBtn{width:46px;height:46px;font-size:26px;background:rgba(255,255,255,.1);border:2px solid #444;border-radius:5px;cursor:pointer;padding:0}
+  .bookBtn:hover{border-color:#aaa}
+  .bookBtn.on{border-color:#ffd54a}
+  #bookCol{display:none;max-height:72vh;overflow-y:auto}
+  #bookSearch{width:100%;box-sizing:border-box;padding:6px 8px;margin:2px 0 6px;border-radius:5px;border:1px solid #555;background:#222;color:#fff;font-size:14px}
+  .card{background:rgba(255,255,255,.07);border-radius:8px;padding:8px;margin:6px 0}
+  .cardHead{display:flex;align-items:center;gap:8px;font-size:14px}
+  .mgrid{display:grid;gap:2px;margin:6px 0}
+  .mini{width:30px;height:30px;background:rgba(0,0,0,.35);border:1px solid #555;border-radius:3px;display:flex;align-items:center;justify-content:center;position:relative}
+  .mini .any{position:absolute;right:1px;bottom:-2px;font-size:11px;color:#ffd54a}
+  .furn{display:flex;align-items:center;gap:14px;margin:4px 0 10px}
+  .furnCol{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .pbar{width:46px;height:8px;background:#222;border:1px solid #555;border-radius:3px;overflow:hidden}
+  .pbar i{display:block;height:100%;width:0}
+  .pbar.flame i{background:#f08a24}
+  .pbar.arrowb i{background:#fff}
+  #chatLog{position:fixed;left:10px;bottom:150px;max-width:min(460px,70vw);pointer-events:none;color:#fff;font-size:14px;text-shadow:1px 1px 2px #000;z-index:35}
+  #chatLog .cl{background:rgba(0,0,0,.45);padding:2px 8px;margin-top:2px;border-radius:3px;transition:opacity .8s;word-wrap:break-word}
+  #chatInput{display:none;position:fixed;left:10px;bottom:118px;width:min(460px,70vw);box-sizing:border-box;padding:6px 8px;border-radius:5px;border:1px solid #888;background:rgba(0,0,0,.75);color:#fff;font-size:15px;z-index:36}
   #heldIcon{position:fixed;pointer-events:none;z-index:70;display:none;width:36px;height:36px}
   #death{position:fixed;inset:0;z-index:58;display:none;align-items:center;justify-content:center;background:rgba(120,0,0,.6);color:#fff}
   .dbox{width:min(420px,90vw);text-align:center}
@@ -107,16 +137,18 @@
   <h2 id="ptitle"></h2>
   <div id="pcols">
     <div><h3>Your items</h3><div id="invList"></div></div>
-    <div><h3>Recipes</h3><div id="recipes"></div></div>
+    <div id="bookCol"><h3>Recipe book</h3><input id="bookSearch" placeholder="Search recipes..." maxlength="30" autocomplete="off"><div id="recipes"></div></div>
   </div>
   <p class="hint">Press E or Esc to close</p>
 </div>
+<div id="chatLog"></div>
+<input id="chatInput" maxlength="120" placeholder="Type a message, then press Enter" autocomplete="off">
 <div id="heldIcon"></div>
 <div id="start">
   <div id="startBox">
     <div id="startTitle">Click to play</div>
     <div id="roomInfo"></div>
-    <div id="startHelp">WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and armor. Q: drop an item<br>Keys 1-9 or mouse wheel: pick a slot (9 slots, 64 per stack)<br>Hold Shift: sprint. Hold Down arrow: crouch<br><br>Xbox controller: plug it in, press any button, then press A to start.<br>Left stick move, right stick look, A jump, B crouch, RT mine or attack, LT place or use, LB and RB change slot, X drop, Y inventory, click the left stick to sprint, Start to pause. In menus use the D-pad and A. On this screen: A or Start resumes, View (Back) saves and quits.</div>
+    <div id="startHelp">WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and recipe book. Q: drop an item. T: chat (multiplayer)<br>Keys 1-9 or mouse wheel: pick a slot (9 slots, 64 per stack)<br>Hold Shift: sprint. Hold Down arrow: crouch<br><br>Xbox controller: plug it in, press any button, then press A to start.<br>Left stick move, right stick look, A jump, B crouch, RT mine or attack, LT place or use, LB and RB change slot, X drop, Y inventory, click the left stick to sprint, Start to pause. In menus use the D-pad and A. On this screen: A or Start resumes, View (Back) saves and quits.</div>
     <div class="btnRow"><button class="big" id="btnResume">Resume</button><button class="big alt" id="btnQuit">Save and Quit to Title</button></div>
   </div>
 </div>
@@ -407,6 +439,26 @@ paintTile(37, 0x8b5a2b, 0.3, P => {
     for (let y = 0; y < d; y++) P(x, y, rgb(0x2f9a30, 1 + (rnd() - 0.5) * 0.28));
   }
 });
+// glass: a light frame with a see-through middle
+(function () {
+  const ox = (38 % AT) * TS, oy = Math.floor(38 / AT) * TS;
+  actx.clearRect(ox, oy, TS, TS);
+  const G = (x, y, c) => { actx.fillStyle = c; actx.fillRect(ox + x, oy + y, 1, 1); };
+  for (let i = 0; i < 16; i++) { G(i, 0, '#d8f1fa'); G(i, 15, '#b4d8e6'); G(0, i, '#d8f1fa'); G(15, i, '#b4d8e6'); }
+  for (const g of [[3, 5], [4, 4], [5, 3], [10, 12], [11, 11]]) G(g[0], g[1], '#ffffff');
+})();
+// furnace: stone with a dark opening (side) and a dark hole (top)
+paintTile(39, 0x858585, 0.22, P => {
+  for (let x = 0; x < 16; x++) { P(x, 0, hx(0x6a6a6a)); P(x, 15, hx(0x6a6a6a)); }
+  for (let x = 3; x < 13; x++) for (let y = 7; y < 13; y++) P(x, y, hx(0x262626));
+  for (let x = 3; x < 13; x++) { P(x, 6, hx(0x4a4a4a)); P(x, 13, hx(0x5a5a5a)); }
+  for (let x = 4; x < 12; x += 2) P(x, 12, hx(0x3c3c3c));
+  P(5, 11, hx(0x8a3a10)); P(8, 11, hx(0x8a3a10)); P(10, 10, hx(0x6a2a0a));
+});
+paintTile(40, 0x8a8a8a, 0.2, P => {
+  for (let x = 3; x < 13; x++) for (let y = 3; y < 13; y++) P(x, y, hx(0x474747));
+  for (let x = 2; x < 14; x++) { P(x, 2, hx(0x6a6a6a)); P(x, 13, hx(0x6a6a6a)); }
+});
 const atlasTex = new THREE.CanvasTexture(atlas);
 atlasTex.magFilter = THREE.NearestFilter;
 atlasTex.minFilter = THREE.NearestFilter;
@@ -419,7 +471,7 @@ const BT = {
   15:[18,19,15], 16:[20,20,20], 17:[21,21,21], 18:[22,22,22], 19:[23,23,23],
   20:[24,24,24], 21:[25,25,25], 22:[26,26,26],
   23:[27,27,27], 24:[28,28,28], 25:[29,29,29],
-  26:[31,30,31], 27:[32,32,32], 28:[33,33,33], 29:[34,34,34], 30:[35,35,35], 31:[36,37,2]
+  26:[31,30,31], 27:[32,32,32], 28:[33,33,33], 29:[34,34,34], 30:[35,35,35], 31:[36,37,2], 32:[40,39,3], 33:[38,38,38]
 };
 function isPlant(b) { return (b >= 23 && b <= 25) || b === 29 || b === 30; } // saplings (23 oak, 24 birch, 25 spruce, 29 jungle) and ferns (30)
 function solid(b) { return b !== 0 && b !== WATER && !isPlant(b); }
@@ -446,7 +498,11 @@ const ITEMS = {
   122:{n:'Birch Seeds',k:'seed',kc:'#6fae3c',dc:0x6fae3c,plant:24},
   123:{n:'Spruce Seeds',k:'seed',kc:'#2b6a3a',dc:0x2b6a3a,plant:25},
   124:{n:'Jungle Seeds',k:'seed',kc:'#1f8a2a',dc:0x1f8a2a,plant:29},
-  26:{n:'Jungle Log',c:0x5a4a2a,b:1,t:30}, 28:{n:'Jungle Planks',c:0xa0623a,b:1,t:33}
+  26:{n:'Jungle Log',c:0x5a4a2a,b:1,t:30}, 28:{n:'Jungle Planks',c:0xa0623a,b:1,t:33},
+  32:{n:'Furnace',c:0x808080,b:1,t:39}, 33:{n:'Glass',c:0xbfe8f5,b:1,t:38},
+  125:{n:'Steak',k:'cooked',kc:'#7a3b1e',dc:0x7a3b1e}, 126:{n:'Cooked Porkchop',k:'cooked',kc:'#d49a6a',dc:0xd49a6a},
+  127:{n:'Cooked Mutton',k:'cooked',kc:'#94512e',dc:0x94512e}, 128:{n:'Cooked Chicken',k:'cooked',kc:'#d9a050',dc:0xd9a050},
+  129:{n:'Cooked Fish',k:'cfish',kc:'#c8905a',dc:0xc8905a}
 };
 
 // Tools: pickaxe, axe, sword in six materials (ids 200+)
@@ -498,9 +554,13 @@ const BI = {
   21:{h:3.8,tool:'pick',d:115,minTier:3},
   22:{h:4.5,tool:'pick',d:116,minTier:3},
   23:{h:0.05,d:121}, 24:{h:0.05,d:122}, 25:{h:0.05,d:123},
-  26:{h:2,tool:'axe',d:26}, 27:{h:0.3,d:0}, 28:{h:1.6,tool:'axe',d:28}, 29:{h:0.05,d:124}, 30:{h:0.05,d:0}, 31:{h:0.9,d:2}
+  26:{h:2,tool:'axe',d:26}, 27:{h:0.3,d:0}, 28:{h:1.6,tool:'axe',d:28}, 29:{h:0.05,d:124}, 30:{h:0.05,d:0}, 31:{h:0.9,d:2}, 32:{h:2.2,tool:'pick',d:32}, 33:{h:0.4,d:33}
 };
-const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2 };
+const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2, 125: 8, 126: 8, 127: 6, 128: 6, 129: 5 };
+// Furnace: what it can smelt or cook (what goes in -> what comes out), how many seconds each fuel burns, and seconds per item
+const SMELT = { 4: 33, 103: 125, 104: 126, 105: 127, 106: 128, 112: 129 };
+const FUEL = { 6: 24, 7: 24, 8: 24, 26: 24, 12: 12, 13: 12, 14: 12, 28: 12, 100: 4 };
+const COOK_TIME = 8;
 
 // ================= Scene =================
 const scene = new THREE.Scene();
@@ -751,7 +811,8 @@ function meshChunk(c) {
           const F = FACES[f];
           const n = nb(c, lx + F.dir[0], y + F.dir[1], lz + F.dir[2]);
           if (isW) { if (n !== 0) continue; }
-          else if (n !== 0 && n !== WATER && !isPlant(n)) continue;
+          else if (b === 33) { if (n !== 0 && n !== WATER && !isPlant(n)) continue; }   // glass only shows against air and water
+          else if (n !== 0 && n !== WATER && !isPlant(n) && n !== 33) continue;         // other blocks show their face through glass
           const tile = bt[f === 2 ? 0 : (f === 3 ? 2 : 1)];
           const u0 = (tile % AT) / AT, v0 = 1 - (Math.floor(tile / AT) + 1) / AT;
           const s = F.shade * vr * lt;
@@ -974,34 +1035,57 @@ function wearArmor() {
   refreshUI(); refreshStats();
 }
 
-// ================= The inventory grid (press E) =================
-// Click an item to pick it up, click a slot to put it down. Right-click takes half / puts down one. Shift-click moves a stack between the hotbar and the inventory (or puts armor on).
+// ================= The inventory screen (press E) =================
+// Click an item to pick it up, click a slot to put it down. Right-click takes half / puts down one. Shift-click moves a stack
+// (between the hotbar and the inventory, into a furnace, or armor onto you).
 let held = null; // the stack you are carrying around with the mouse
-function slotClick(i, secondary, shift) {
-  const s = invSlots[i];
-  if (shift) { if (!held) quickMove(i); refreshUI(); return; }
+let furnaces = {};        // 'x,y,z' -> { inp, fuel, out, burn, burnMax, cook }
+let curFurnaceKey = null; // the furnace whose screen is open
+let furnUI = null;        // the progress bars on the furnace screen
+let bookOpen = false;     // is the recipe book showing?
+function stackClick(arr, i, secondary) {
+  const s = arr[i];
   if (!held) {
     if (!s) return;
     if (secondary && !s.g && s.n > 1) {
       const half = Math.ceil(s.n / 2);
       held = { id: s.id, n: half };
       s.n -= half;
-    } else { held = s; invSlots[i] = null; }
+    } else { held = s; arr[i] = null; }
   } else if (!s) {
-    if (secondary && !held.g && held.n > 1) { invSlots[i] = { id: held.id, n: 1 }; held.n--; }
-    else { invSlots[i] = held; held = null; }
+    if (secondary && !held.g && held.n > 1) { arr[i] = { id: held.id, n: 1 }; held.n--; }
+    else { arr[i] = held; held = null; }
   } else if (!held.g && !s.g && s.id === held.id) {
     const room = MAXSTACK - s.n;
     const t = secondary ? Math.min(1, room, held.n) : Math.min(room, held.n);
     s.n += t; held.n -= t;
     if (held.n <= 0) held = null;
-  } else if (!secondary) { invSlots[i] = held; held = s; }
+  } else if (!secondary) { arr[i] = held; held = s; }
+}
+function slotClick(i, secondary, shift) {
+  if (shift) { if (!held) quickMove(i); }
+  else stackClick(invSlots, i, secondary);
   refreshUI();
+}
+// put a stack back into your inventory (or drop it at your feet if there is no room)
+function stashStack(c) {
+  if (c.g) { if (!addGearObj(c.g)) dropItem(c.id, p.x, p.y + 1, p.z, { g: c.g, vy: 2.5, vx: 0, vz: 0, delay: 1.6 }); }
+  else { const left = add(c.id, c.n); if (left > 0) dropExtra(c.id, left); }
+}
+// put as much of stack s as fits into a furnace slot
+function moveInto(f, kind, s) {
+  const t = f[kind];
+  if (!t) { f[kind] = { id: s.id, n: s.n }; s.n = 0; }
+  else if (t.id === s.id) { const m = Math.min(MAXSTACK - t.n, s.n); t.n += m; s.n -= m; }
 }
 function quickMove(i) {
   const s = invSlots[i];
   if (!s) return;
   if (s.g && ARMOR[s.id]) { equipSlot(i); return; } // armor goes straight on
+  if (panelMode === 'furnace' && !s.g && curFurnace()) { // food and sand go in the furnace, fuel goes in the fuel slot
+    const kind = SMELT[s.id] !== undefined ? 'inp' : (FUEL[s.id] !== undefined ? 'fuel' : null);
+    if (kind) { moveInto(curFurnace(), kind, s); if (s.n <= 0) invSlots[i] = null; return; }
+  }
   const lo = i < HOTBAR ? HOTBAR : 0, hi = i < HOTBAR ? NSLOTS : HOTBAR;
   if (!s.g) {
     for (let j = lo; j < hi && s.n > 0; j++) {
@@ -1012,25 +1096,32 @@ function quickMove(i) {
   }
   for (let j = lo; j < hi; j++) if (!invSlots[j]) { invSlots[j] = s; invSlots[i] = null; return; }
 }
-// click an armor slot: put on the armor you are holding, or take off what you are wearing
+// click an armor slot: put on the armor you are holding, or pick up what you are wearing
 function armorClick(slot) {
   const cur = equipped[slot];
   if (held && held.g && ARMOR[held.id] && ARMOR[held.id].slot === slot) { equipped[slot] = held.g; held = cur ? { id: cur.id, g: cur } : null; }
   else if (!held && cur) { held = { id: cur.id, g: cur }; equipped[slot] = null; }
   refreshUI(); refreshStats();
 }
-// closing the inventory puts whatever you are holding back (or drops it if there is no room)
+// click a slot of the crafting grid
+function gridClick(i, secondary, shift) {
+  const g = curGrid();
+  if (shift) {
+    if (!held && g[i]) { const c = g[i]; g[i] = null; stashStack(c); }
+  } else stackClick(g, i, secondary);
+  refreshUI();
+}
+// closing the inventory puts back whatever you are holding or left on the crafting grid
 function returnHeld() {
   if (!held) return;
   const h = held;
   held = null;
-  if (h.g) {
-    if (!addGearObj(h.g)) dropItem(h.id, p.x, p.y + 1, p.z, { g: h.g, vy: 2.5, vx: 0, vz: 0, delay: 1.6 });
-  } else {
-    const left = add(h.id, h.n);
-    if (left > 0) dropExtra(h.id, left);
-  }
+  stashStack(h);
 }
+function returnGridItems(g) {
+  for (let i = 0; i < g.length; i++) { const c = g[i]; if (c) { g[i] = null; stashStack(c); } }
+}
+function returnCraft() { returnGridItems(craftGrid2); returnGridItems(craftGrid3); }
 function dropHeld() {
   if (!held) return;
   const h = held;
@@ -1043,45 +1134,157 @@ function dropHeld() {
   else for (let k = 0; k < h.n; k++) dropItem(h.id, px, py, pz, o);
   refreshUI();
 }
-
-// ================= Recipes =================
-const PL = [12, 13, 14, 28];
-const RECIPES = [
-  { n: 'Oak Planks', out: 12, q: 4, need: [{ i: 6, n: 1 }] },
-  { n: 'Birch Planks', out: 13, q: 4, need: [{ i: 7, n: 1 }] },
-  { n: 'Spruce Planks', out: 14, q: 4, need: [{ i: 8, n: 1 }] },
-  { n: 'Jungle Planks', out: 28, q: 4, need: [{ i: 26, n: 1 }] },
-  { n: 'Sticks', out: 100, q: 4, need: [{ g: PL, n: 2 }] },
-  { n: 'Crafting Table', out: 15, q: 1, need: [{ g: PL, n: 4 }] },
-  { n: 'Shears', out: 119, q: 1, need: [{ i: 111, n: 2 }] },
-  { n: 'String', out: 118, q: 3, need: [{ i: 117, n: 2 }] },
-  { n: 'Fishing Rod', out: 120, q: 1, need: [{ i: 100, n: 2 }, { i: 118, n: 2 }] }
-];
-TMATS.forEach((m, mi) => TTYPES.forEach((t, ti) => {
-  const id = 200 + mi * 10 + ti;
-  const mn = m.need.g ? { g: m.need.g, n: t[2] } : { i: m.need.i, n: t[2] };
-  RECIPES.push({ n: ITEMS[id].n, out: id, q: 1, table: true, need: [mn, { i: 100, n: t[3] }] });
-}));
-AMATS.forEach((m, mi) => APIECES.forEach((a, ai) => {
-  const id = 300 + mi * 10 + ai;
-  RECIPES.push({ n: ITEMS[id].n, out: id, q: 1, table: true, need: [{ i: m.mat, n: a[2] }] });
-}));
-function have(nd) { return nd.g ? nd.g.reduce((s, i) => s + count(i), 0) : count(nd.i); }
-function canCraft(r) { return r.need.every(nd => have(nd) >= nd.n); }
-function needText(r) { return r.need.map(nd => nd.n + ' ' + (nd.g ? 'Planks (any)' : ITEMS[nd.i].n)).join(' + '); }
-function craft(r) {
-  if (r.table && panelMode !== 'table') { toast('Place a crafting table and right-click it to make this.'); return; }
-  if (!canCraft(r)) return;
-  for (const nd of r.need) {
-    let left = nd.n;
-    const ids = nd.g ? nd.g : [nd.i];
-    for (const i of ids) {
-      const t = Math.min(left, count(i));
-      if (t > 0) { take(i, t); left -= t; }
-      if (left <= 0) break;
+// click one of the three furnace slots: 'inp' (what to cook), 'fuel', 'out' (the result: you can only take it)
+function furnaceClick(kind, secondary, shift) {
+  const f = curFurnace();
+  if (!f) return;
+  if (kind === 'out') {
+    if (f.out) {
+      if (shift) { const left = add(f.out.id, f.out.n); if (left > 0) f.out.n = left; else f.out = null; }
+      else if (!held) { held = f.out; f.out = null; }
+      else if (!held.g && held.id === f.out.id) {
+        const t = Math.min(MAXSTACK - held.n, f.out.n);
+        held.n += t; f.out.n -= t;
+        if (f.out.n <= 0) f.out = null;
+      }
     }
+  } else if (shift) {
+    if (f[kind]) { const c = f[kind]; f[kind] = null; stashStack(c); }
+  } else if (!held) {
+    if (f[kind]) { held = f[kind]; f[kind] = null; }
+  } else if (!held.g && (kind === 'inp' ? SMELT[held.id] !== undefined : FUEL[held.id] !== undefined)) {
+    if (!f[kind]) {
+      if (secondary && held.n > 1) { f[kind] = { id: held.id, n: 1 }; held.n--; }
+      else { f[kind] = held; held = null; }
+    } else if (f[kind].id === held.id) {
+      const t = secondary ? Math.min(1, MAXSTACK - f[kind].n, held.n) : Math.min(MAXSTACK - f[kind].n, held.n);
+      f[kind].n += t; held.n -= t;
+      if (held.n <= 0) held = null;
+    } else if (!secondary) { const o = f[kind]; f[kind] = held; held = o; }
+  } else toast(kind === 'inp' ? 'The furnace can only cook sand and raw food.' : 'That will not burn. Try logs, planks or sticks.');
+  refreshUI();
+}
+
+// ================= Recipes: a pattern of items on the crafting grid =================
+const PL = [12, 13, 14, 28]; // any kind of planks
+const RECIPES = [];
+function addShaped(n, out, q, pat, key) { RECIPES.push({ n, out, q, pat, key }); } // the pattern can be flipped left-to-right
+function addLess(n, out, q, list) { RECIPES.push({ n, out, q, less: list }); }    // any order
+addLess('Oak Planks', 12, 4, [6]); addLess('Birch Planks', 13, 4, [7]); addLess('Spruce Planks', 14, 4, [8]); addLess('Jungle Planks', 28, 4, [26]);
+addShaped('Sticks', 100, 4, ['P', 'P'], { P: PL });
+addShaped('Crafting Table', 15, 1, ['PP', 'PP'], { P: PL });
+addShaped('Furnace', 32, 1, ['SSS', 'S S', 'SSS'], { S: 3 });
+addShaped('Shears', 119, 1, [' I', 'I '], { I: 111 });
+addLess('String', 118, 3, [117, 117]);
+addLess('Fishing Rod', 120, 1, [100, 100, 118, 118]);
+TMATS.forEach((m, mi) => {
+  const key = { M: m.need.g ? m.need.g : m.need.i, S: 100 };
+  const base = 200 + mi * 10;
+  addShaped(ITEMS[base].n, base, 1, ['MMM', ' S ', ' S '], key);
+  addShaped(ITEMS[base + 1].n, base + 1, 1, ['MM', 'MS', ' S'], key);
+  addShaped(ITEMS[base + 2].n, base + 2, 1, ['M', 'M', 'S'], key);
+});
+AMATS.forEach((m, mi) => {
+  const key = { M: m.mat };
+  const base = 300 + mi * 10;
+  addShaped(ITEMS[base].n, base, 1, ['MMM', 'M M'], key);
+  addShaped(ITEMS[base + 1].n, base + 1, 1, ['M M', 'MMM', 'MMM'], key);
+  addShaped(ITEMS[base + 2].n, base + 2, 1, ['MMM', 'M M', 'M M'], key);
+  addShaped(ITEMS[base + 3].n, base + 3, 1, ['M M', 'M M'], key);
+});
+// anything bigger than 2 x 2 needs the crafting table
+RECIPES.forEach(r => { r.table = r.pat ? (r.pat.length > 2 || r.pat[0].length > 2) : r.less.length > 4; });
+
+const craftGrid2 = [null, null, null, null];                   // the 2 x 2 grid in your inventory
+const craftGrid3 = [null, null, null, null, null, null, null, null, null]; // the 3 x 3 grid at a crafting table
+function gridDim() { return panelMode === 'table' ? 3 : 2; }
+function curGrid() { return panelMode === 'table' ? craftGrid3 : craftGrid2; }
+function keyOk(k, id) { return Array.isArray(k) ? k.indexOf(id) >= 0 : k === id; }
+function matchShaped(r, ids, w, h) {
+  let minx = w, miny = h, maxx = -1, maxy = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (ids[y * w + x]) { minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y); }
+  const pw = r.pat[0].length, ph = r.pat.length;
+  if (maxx - minx + 1 !== pw || maxy - miny + 1 !== ph) return false;
+  for (const mirror of [false, true]) {
+    let ok = true;
+    for (let y = 0; y < ph && ok; y++) for (let x = 0; x < pw && ok; x++) {
+      const ch = r.pat[y][mirror ? pw - 1 - x : x];
+      const id = ids[(miny + y) * w + (minx + x)];
+      if (ch === ' ') { if (id !== 0) ok = false; }
+      else if (!id || id < 0 || !keyOk(r.key[ch], id)) ok = false;
+    }
+    if (ok) return true;
   }
-  giveItem(r.out, r.q);
+  return false;
+}
+// ids: one number per grid slot (0 = empty, -1 = a tool or armor, which is never an ingredient)
+function findRecipe(ids, w, h) {
+  const used = ids.filter(x => x !== 0);
+  if (!used.length || used.indexOf(-1) >= 0) return null;
+  for (const r of RECIPES) {
+    if (r.less) {
+      if (r.less.length !== used.length) continue;
+      const rest = used.slice();
+      let ok = true;
+      for (const k of r.less) { const j = rest.findIndex(id => keyOk(k, id)); if (j < 0) { ok = false; break; } rest.splice(j, 1); }
+      if (ok) return r;
+    } else if (matchShaped(r, ids, w, h)) return r;
+  }
+  return null;
+}
+function craftPreview() {
+  const w = gridDim();
+  return findRecipe(curGrid().map(c => !c ? 0 : (c.g ? -1 : c.id)), w, w);
+}
+// take what the grid makes: onto the mouse, or (shift) straight into your inventory, as many as the grid allows
+function takeCraft(shift) {
+  const grid = curGrid();
+  let crafted = 0;
+  for (let loop = 0; loop < (shift ? 64 : 1); loop++) {
+    const r = craftPreview();
+    if (!r) break;
+    if (shift) { if (roomFor(r.out) < r.q) break; }
+    else if (held && (isGear(r.out) || held.g || held.id !== r.out || held.n + r.q > MAXSTACK)) { toast('Put down what you are holding first.'); break; }
+    for (let i = 0; i < grid.length; i++) if (grid[i]) { grid[i].n--; if (grid[i].n <= 0) grid[i] = null; }
+    if (shift) giveItem(r.out, r.q);
+    else if (isGear(r.out)) held = { id: r.out, g: { uid: uidN++, id: r.out, dur: maxDur(r.out) } };
+    else if (held) held.n += r.q;
+    else held = { id: r.out, n: r.q };
+    crafted++;
+  }
+  refreshUI();
+  return crafted;
+}
+// recipe book button: lay the ingredients out on the grid from your inventory
+function fillGrid(r) {
+  if (r.table && panelMode !== 'table') return false;
+  const w = gridDim();
+  const cells = [];
+  if (r.pat) { for (let y = 0; y < r.pat.length; y++) for (let x = 0; x < r.pat[0].length; x++) { const ch = r.pat[y][x]; if (ch !== ' ') cells.push([y * w + x, r.key[ch]]); } }
+  else r.less.forEach((k, j) => cells.push([j, k]));
+  const g = curGrid();
+  const have = {};
+  for (const s of invSlots) if (s && !s.g) have[s.id] = (have[s.id] || 0) + s.n;
+  for (const c of g) if (c && !c.g) have[c.id] = (have[c.id] || 0) + c.n; // what is on the grid now goes back first
+  const use = [];
+  for (const c of cells) {
+    const ids = Array.isArray(c[1]) ? c[1] : [c[1]];
+    const id = ids.find(x => (have[x] || 0) > 0);
+    if (id === undefined) return false;
+    have[id]--; use.push([c[0], id]);
+  }
+  returnGridItems(g);
+  for (const u of use) { take(u[1], 1); g[u[0]] = { id: u[1], n: 1 }; }
+  refreshUI();
+  return true;
+}
+// recipe book search: matches the name of what it makes, or of any ingredient
+function bookMatches(r, q) {
+  q = (q || '').trim().toLowerCase();
+  if (!q) return true;
+  if (ITEMS[r.out].n.toLowerCase().indexOf(q) >= 0) return true;
+  const keys = r.pat ? Object.keys(r.key).map(k => r.key[k]) : r.less;
+  return keys.some(k => (Array.isArray(k) ? k : [k]).some(id => ITEMS[id] && ITEMS[id].n.toLowerCase().indexOf(q) >= 0));
 }
 
 // ================= UI =================
@@ -1147,6 +1350,16 @@ function drawKind(cx, k, col) {
     R(6, 11, 5, 3, '#7a5a2a'); P(7, 10, '#7a5a2a'); P(9, 10, '#7a5a2a');
     R(8, 6, 1, 5, '#4a7a2a');
     R(4, 5, 4, 2, col); R(9, 3, 4, 2, col); P(4, 5, lite); P(9, 3, lite);
+  }
+  else if (k === 'cooked') {
+    R(4, 4, 8, 8, col); R(3, 5, 10, 6, col); R(5, 3, 6, 10, col);
+    R(5, 4, 4, 1, 'rgba(255,255,255,0.3)');
+    for (let i = 0; i < 3; i++) { P(5 + i * 2, 6, 'rgba(0,0,0,0.45)'); P(6 + i * 2, 7, 'rgba(0,0,0,0.45)'); P(5 + i * 2, 9, 'rgba(0,0,0,0.45)'); }
+    R(11, 11, 3, 2, '#eee0c8');
+  }
+  else if (k === 'cfish') {
+    R(3, 6, 8, 5, col); R(11, 5, 3, 2, col); R(11, 10, 3, 2, col); R(5, 5, 4, 1, col);
+    P(4, 7, '#222'); for (let i = 0; i < 3; i++) P(6 + i * 2, 8, 'rgba(0,0,0,0.4)');
   }
   else if (k === 'leather') {
     const base = '#9a5a2a', edge = '#5e3515', hi = '#bd7c44', patch = '#84491f', stitch = '#ead6a6';
@@ -1252,43 +1465,201 @@ function durBar(g, id) {
   bar.appendChild(fill);
   return bar;
 }
+function stackTitle(s, fallback) {
+  return s ? ITEMS[s.id].n + (s.g ? ' (' + s.g.dur + '/' + maxDur(s.id) + ')' : (s.n > 1 ? ' x' + s.n : '')) : fallback;
+}
+function fillSlotBtn(b, s) {
+  if (!s) return;
+  b.appendChild(icon(s.id));
+  if (!s.g && s.n > 1) { const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = s.n; b.appendChild(ct); }
+  else if (s.g) { const bar = durBar(s.g, s.id); if (bar) b.appendChild(bar); }
+}
+// click = pick up / put down; right-click (controller X) = half / one; shift-click (controller RB) = quick move
+function tagBtn(b, onClick, onSecondary, onShift) {
+  b.addEventListener('click', (e) => onClick(!!(e && e.shiftKey)));
+  b.addEventListener('contextmenu', (e) => { e.preventDefault(); onSecondary(); });
+  b.onSecondary = onSecondary; b.onShift = onShift;
+}
 function slotButton(i, v) {
   const s = invSlots[i];
   const b = document.createElement('button');
   b.className = 'gs' + (i < HOTBAR && i === sel ? ' gsel' : '');
   b.dataset.slot = i; b.dataset.v = v;
-  b.title = s ? ITEMS[s.id].n + (s.g ? ' (' + s.g.dur + '/' + maxDur(s.id) + ')' : (s.n > 1 ? ' x' + s.n : '')) : (i < HOTBAR ? 'Hotbar slot ' + (i + 1) : 'Empty');
-  if (s) {
-    b.appendChild(icon(s.id));
-    if (!s.g && s.n > 1) { const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = s.n; b.appendChild(ct); }
-    else if (s.g) { const bar = durBar(s.g, s.id); if (bar) b.appendChild(bar); }
-  }
-  b.addEventListener('click', (e) => slotClick(i, false, !!e.shiftKey));
-  b.addEventListener('contextmenu', (e) => { e.preventDefault(); slotClick(i, true, false); });
+  b.title = stackTitle(s, i < HOTBAR ? 'Hotbar slot ' + (i + 1) : 'Empty');
+  fillSlotBtn(b, s);
+  tagBtn(b, (sh) => slotClick(i, false, sh), () => slotClick(i, true, false), () => slotClick(i, false, true));
   return b;
 }
+function craftCellBtn(i) {
+  const s = curGrid()[i];
+  const b = document.createElement('button'); b.className = 'gs';
+  b.dataset.top = '1'; b.dataset.cell = i;
+  b.title = stackTitle(s, 'Crafting slot');
+  fillSlotBtn(b, s);
+  tagBtn(b, (sh) => gridClick(i, false, sh), () => gridClick(i, true, false), () => gridClick(i, false, true));
+  return b;
+}
+function resultBtn() {
+  const r = craftPreview();
+  const b = document.createElement('button'); b.className = 'gs result';
+  b.dataset.top = '1'; b.dataset.result = '1';
+  b.title = r ? r.n + (r.q > 1 ? ' x' + r.q : '') : 'Result';
+  if (r) {
+    b.appendChild(icon(r.out));
+    if (r.q > 1) { const ct = document.createElement('span'); ct.className = 'cnt'; ct.textContent = r.q; b.appendChild(ct); }
+  }
+  tagBtn(b, (sh) => { takeCraft(sh); }, () => { takeCraft(false); }, () => { takeCraft(true); });
+  return b;
+}
+// a little picture of you, wearing your armor
+function drawPlayerPreview(cv) {
+  const cx = cv.getContext('2d');
+  const R = (x, y, w, h, c) => { cx.fillStyle = c; cx.fillRect(x, y, w, h); };
+  const shirt = ['#3a7ad0', '#d05050', '#50b060', '#d0a030', '#9050c0', '#40b0b0', '#e07a30'][hashStr(myName()) % 7];
+  const skin = '#e0b090', hair = '#4a3220', pants = '#2a3a6a';
+  const col = (slot) => (equipped[slot] && ITEMS[equipped[slot].id].kc) || '#999999';
+  cx.clearRect(0, 0, 32, 48);
+  R(9, 28, 6, 16, pants); R(17, 28, 6, 16, pants);                       // legs
+  R(8, 14, 16, 14, shirt); R(4, 14, 4, 14, shirt); R(24, 14, 4, 14, shirt); // body and arms
+  R(4, 26, 4, 3, skin); R(24, 26, 4, 3, skin);                            // hands
+  R(10, 2, 12, 12, skin); R(10, 2, 12, 4, hair);                          // head
+  R(12, 8, 2, 2, '#222222'); R(18, 8, 2, 2, '#222222');                  // eyes
+  R(14, 11, 4, 1, '#a0604a');                                             // mouth
+  if (equipped.boots) { const c = col('boots'); R(9, 40, 6, 4, c); R(17, 40, 6, 4, c); }
+  if (equipped.legs) { const c = col('legs'); R(9, 28, 6, 12, c); R(17, 28, 6, 12, c); R(8, 26, 16, 3, c); }
+  if (equipped.chest) { const c = col('chest'); R(8, 14, 16, 12, c); R(4, 14, 4, 9, c); R(24, 14, 4, 9, c); }
+  if (equipped.helmet) { const c = col('helmet'); R(9, 1, 14, 5, c); R(9, 1, 3, 12, c); R(20, 1, 3, 12, c); }
+}
+function furnSlotBtn(kind, s) {
+  const b = document.createElement('button'); b.className = 'gs';
+  b.dataset.top = '1'; b.dataset.furn = kind;
+  b.title = stackTitle(s, kind === 'inp' ? 'Put sand or raw food here' : (kind === 'fuel' ? 'Fuel: logs, planks or sticks' : 'Result'));
+  fillSlotBtn(b, s);
+  tagBtn(b, (sh) => furnaceClick(kind, false, sh), () => furnaceClick(kind, true, false), () => furnaceClick(kind, false, true));
+  return b;
+}
+function pbar(cls) {
+  const d = document.createElement('div'); d.className = 'pbar ' + cls;
+  const i = document.createElement('i'); d.appendChild(i);
+  return { box: d, fill: i };
+}
+function furnaceBlock() {
+  const wrap = document.createElement('div'); wrap.className = 'furn';
+  const f = curFurnace();
+  if (!f) return wrap;
+  const c1 = document.createElement('div'); c1.className = 'furnCol';
+  const flame = pbar('flame');
+  c1.appendChild(furnSlotBtn('inp', f.inp)); c1.appendChild(flame.box); c1.appendChild(furnSlotBtn('fuel', f.fuel));
+  const c2 = document.createElement('div'); c2.className = 'furnCol';
+  const arrow = pbar('arrowb');
+  c2.appendChild(arrow.box);
+  const c3 = document.createElement('div'); c3.className = 'furnCol';
+  c3.appendChild(furnSlotBtn('out', f.out));
+  furnUI = { flame: flame.fill, arrow: arrow.fill };
+  furnUI.flame.style.width = (f.burnMax > 0 ? f.burn / f.burnMax * 100 : 0) + '%';
+  furnUI.arrow.style.width = (f.cook / COOK_TIME * 100) + '%';
+  wrap.appendChild(c1); wrap.appendChild(c2); wrap.appendChild(c3);
+  const note = document.createElement('div'); note.className = 'need'; note.style.maxWidth = '210px';
+  note.textContent = 'Cooks sand into glass and raw meat or fish into food. Fuel: logs, planks or sticks.';
+  wrap.appendChild(note);
+  return wrap;
+}
+const bookColEl = document.getElementById('bookCol');
+const bookSearchEl = document.getElementById('bookSearch');
+bookSearchEl.addEventListener('input', () => renderBook());
+function miniCell(key) {
+  const d = document.createElement('div'); d.className = 'mini';
+  if (key !== undefined) {
+    const id = Array.isArray(key) ? key[0] : key;
+    d.appendChild(icon(id));
+    d.title = Array.isArray(key) ? 'Any planks' : ITEMS[id].n;
+    if (Array.isArray(key)) { const a = document.createElement('span'); a.className = 'any'; a.textContent = '*'; d.appendChild(a); }
+  }
+  return d;
+}
+function renderBook() {
+  recipesEl.innerHTML = '';
+  const q = bookSearchEl.value || '';
+  let shown = 0;
+  for (const r of RECIPES) {
+    if (!bookMatches(r, q)) continue;
+    shown++;
+    const card = document.createElement('div'); card.className = 'card';
+    const head = document.createElement('div'); head.className = 'cardHead';
+    head.appendChild(icon(r.out));
+    head.appendChild(document.createTextNode(r.n + (r.q > 1 ? ' x' + r.q : '') + (r.table ? '   (crafting table)' : '')));
+    card.appendChild(head);
+    const mg = document.createElement('div'); mg.className = 'mgrid';
+    if (r.pat) {
+      mg.style.gridTemplateColumns = 'repeat(' + r.pat[0].length + ',30px)';
+      for (let y = 0; y < r.pat.length; y++) for (let x = 0; x < r.pat[0].length; x++) { const ch = r.pat[y][x]; mg.appendChild(miniCell(ch === ' ' ? undefined : r.key[ch])); }
+    } else {
+      mg.style.gridTemplateColumns = 'repeat(' + r.less.length + ',30px)';
+      r.less.forEach(k => mg.appendChild(miniCell(k)));
+    }
+    card.appendChild(mg);
+    const hint = document.createElement('div'); hint.className = 'need';
+    hint.textContent = r.pat ? 'Place like this on the grid' : 'Any order on the grid';
+    card.appendChild(hint);
+    card.appendChild(mkBtn('Fill grid', 'eq', () => {
+      if (!fillGrid(r)) toast(r.table && panelMode !== 'table' ? 'You need a crafting table for this one.' : 'You do not have the ingredients.');
+    }));
+    recipesEl.appendChild(card);
+  }
+  if (!shown) { const n = document.createElement('div'); n.className = 'need'; n.textContent = 'No recipes match.'; recipesEl.appendChild(n); }
+}
+function toggleBook() { bookOpen = !bookOpen; if (bookOpen) renderBook(); renderPanel(); }
 function renderPanel() {
-  ptitle.textContent = panelMode === 'table' ? 'Crafting Table' : 'Inventory';
+  ptitle.textContent = panelMode === 'table' ? 'Crafting Table' : (panelMode === 'furnace' ? 'Furnace' : 'Inventory');
   invList.innerHTML = '';
+  furnUI = null;
   const sub = (t) => { const d = document.createElement('div'); d.className = 'sub'; d.textContent = t; return d; };
-  invList.appendChild(sub('Armor worn (' + armorPoints() + ' points)'));
-  const ar = document.createElement('div'); ar.className = 'armorRow';
-  [['helmet', 'H', 'Helmet'], ['chest', 'C', 'Chestplate'], ['legs', 'L', 'Leggings'], ['boots', 'B', 'Boots']].forEach(sl => {
-    const g = equipped[sl[0]];
-    const b = document.createElement('button');
-    b.className = 'gs armor' + (g ? '' : ' emptyarmor');
-    b.dataset.armor = sl[0];
-    b.title = g ? ITEMS[g.id].n + ' (' + g.dur + '/' + maxDur(g.id) + ')' : sl[2] + ' slot';
-    if (g) { b.appendChild(icon(g.id)); const bar = durBar(g, g.id); if (bar) b.appendChild(bar); }
-    else b.textContent = sl[1];
-    b.addEventListener('click', () => armorClick(sl[0]));
-    ar.appendChild(b);
-  });
-  invList.appendChild(ar);
+  const top = document.createElement('div'); top.className = 'topRow';
+  if (panelMode === 'inv') {
+    invList.appendChild(sub('Armor worn (' + armorPoints() + ' points)'));
+    const ac = document.createElement('div'); ac.className = 'armorCol';
+    [['helmet', 'H', 'Helmet'], ['chest', 'C', 'Chestplate'], ['legs', 'L', 'Leggings'], ['boots', 'B', 'Boots']].forEach(sl => {
+      const g = equipped[sl[0]];
+      const b = document.createElement('button');
+      b.className = 'gs armor' + (g ? '' : ' emptyarmor');
+      b.dataset.armor = sl[0]; b.dataset.top = '1';
+      b.title = g ? ITEMS[g.id].n + ' (' + g.dur + '/' + maxDur(g.id) + ')' : sl[2] + ' slot';
+      if (g) { b.appendChild(icon(g.id)); const bar = durBar(g, g.id); if (bar) b.appendChild(bar); }
+      else b.textContent = sl[1];
+      tagBtn(b, () => armorClick(sl[0]), () => armorClick(sl[0]), () => armorClick(sl[0]));
+      ac.appendChild(b);
+    });
+    const pv = document.createElement('div'); pv.className = 'previewCol';
+    const cv = document.createElement('canvas'); cv.width = 32; cv.height = 48;
+    drawPlayerPreview(cv);
+    pv.appendChild(cv);
+    const nm = document.createElement('div'); nm.textContent = myName(); pv.appendChild(nm);
+    top.appendChild(ac); top.appendChild(pv);
+  }
+  if (panelMode === 'furnace') top.appendChild(furnaceBlock());
+  else {
+    const bb = document.createElement('button');
+    bb.className = 'bookBtn' + (bookOpen ? ' on' : '');
+    bb.textContent = '\uD83D\uDCD6'; bb.title = 'Recipe book';
+    bb.dataset.top = '1'; bb.dataset.book = '1';
+    bb.addEventListener('click', toggleBook);
+    top.appendChild(bb);
+    const cc = document.createElement('div'); cc.className = 'craftCol';
+    const dim = gridDim();
+    cc.appendChild(sub(panelMode === 'table' ? 'Crafting (3 x 3)' : 'Crafting (2 x 2)'));
+    const row = document.createElement('div'); row.className = 'craftRow';
+    const cg = document.createElement('div'); cg.className = 'cgrid c' + dim;
+    for (let i = 0; i < dim * dim; i++) cg.appendChild(craftCellBtn(i));
+    const ar = document.createElement('div'); ar.className = 'arrow'; ar.textContent = '\u2192';
+    row.appendChild(cg); row.appendChild(ar); row.appendChild(resultBtn());
+    cc.appendChild(row);
+    top.appendChild(cc);
+  }
+  invList.appendChild(top);
   const hl = document.createElement('div'); hl.id = 'heldLine';
   hl.textContent = held
     ? 'Holding ' + ITEMS[held.id].n + (held.g ? '' : ' x' + held.n) + '. Click a slot to put it down.'
-    : 'Click an item to pick it up, then click a slot to put it down. Right-click takes half. Shift-click moves it between the hotbar and the inventory.';
+    : 'Click an item to pick it up, then click a slot to put it down. Right-click takes half. Shift-click moves it.';
   invList.appendChild(hl);
   if (held) {
     const row = document.createElement('div'); row.className = 'row';
@@ -1303,13 +1674,7 @@ function renderPanel() {
   const hb = document.createElement('div'); hb.className = 'grid';
   for (let i = 0; i < HOTBAR; i++) hb.appendChild(slotButton(i, 27 + i));
   invList.appendChild(hb);
-  recipesEl.innerHTML = '';
-  for (const r of RECIPES) {
-    const blocked = r.table && panelMode !== 'table';
-    const sub2 = needText(r) + (blocked ? '  (needs a crafting table)' : '');
-    recipesEl.appendChild(mkRow(icon(r.out), r.n + (r.q > 1 ? ' x' + r.q : ''), sub2,
-      [mkBtn('Craft', '', () => craft(r), !canCraft(r) || blocked)]));
-  }
+  bookColEl.style.display = (bookOpen && panelMode !== 'furnace') ? 'block' : 'none';
   updateHeldIcon();
 }
 function locked() { return document.pointerLockElement === renderer.domElement; }
@@ -1321,11 +1686,14 @@ function openPanel(mode) {
   startEl.style.display = 'none';
   document.exitPointerLock();
   renderPanel();
+  if (bookOpen) renderBook();
 }
 function closePanel(relock) {
   panelOpen = false;
   panelEl.style.display = 'none';
   returnHeld();
+  returnCraft();
+  curFurnaceKey = null;
   updateHeldIcon();
   startEl.style.display = (pad.playing || !inGame) ? 'none' : 'flex';
   if (relock && !pad.playing) renderer.domElement.requestPointerLock();
@@ -1987,7 +2355,7 @@ function updateToucan(m, dt) {
     const d3 = Math.hypot(tx, ty, tz) || 1;
     if (m.backoff > 0) { vx = -tx / d3 * s.speed * 0.8; vz = -tz / d3 * s.speed * 0.8; vy = 2.5; }
     else if (d3 > 1.1) { vx = tx / d3 * s.speed; vy = ty / d3 * s.speed; vz = tz / d3 * s.speed; }
-    if (d3 < 1.7 && m.biteCd <= 0) { m.biteCd = 1.2; m.backoff = 0.5; mobBite(s.dmg, m, np); }
+    if (d3 < 1.7 && m.biteCd <= 0 && !(m.backoff > 0)) { m.biteCd = 1.5; m.backoff = 0.7; mobBite(s.dmg, m, np); }
     m.chasing = true;
     if (d3 > 1.1 || m.backoff > 0) m.rot = Math.atan2(m.backoff > 0 ? -tx : tx, m.backoff > 0 ? -tz : tz);
   } else {
@@ -2330,6 +2698,7 @@ function damageMob(m, dmg, fx, fz, killer) {
   m.kx = ax / l * 6; m.kz = az / l * 6;
   m.vy = 5; m.onGround = false;
   m.fleeX = fx; m.fleeZ = fz;
+  if (m.spec.flying) m.backoff = 1.2; // a toucan that is hit flutters back for a moment, then comes at you again
   if (m.spec.hostile && (WOLF_ATTACKS || m.spec.flying)) m.aggro = 10; else m.panic = 4;
   m.flash = 0.25;
   if (m.hp <= 0) { m.killer = killer; startDeath(m); }
@@ -2571,6 +2940,7 @@ function breakBlock(r) {
     else if (roll < 0.27) drop = LEAF_SEED[r.b];
   }
   if (isPlant(r.b)) removeSaplingAt(x, y, z);
+  if (r.b === 32) dumpFurnace(x, y, z);
   setBlock(x, y, z, 0);
   // the block pops out as an item you have to walk over to pick up
   if (drop) for (let i = 0; i < qty; i++) dropItem(drop, x + 0.5, y + 0.5, z + 0.5, { vy: 3, delay: 0.5 });
@@ -2667,6 +3037,7 @@ function attackUp() { leftDown = false; mining = null; crack.visible = false; }
 function useDown() {
   const r = raycastBlocks(6);
   if (r && r.b === 15) { openPanel('table'); return; }
+  if (r && r.b === 32) { openFurnace(r.hit[0], r.hit[1], r.hit[2]); return; }
   const id = selId();
   if (id === 119) {
     const m = mobAtRay(r ? Math.min(4, r.t) : 4);
@@ -2691,8 +3062,14 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ================= Controls =================
 addEventListener('keydown', (e) => {
-  if (e.target && e.target.tagName === 'INPUT') return; // typing a world name
+  if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Escape') e.target.blur(); return; } // typing a name, a search or a chat message
   if (dead) { if (e.code === 'Enter') document.getElementById('btnRespawn').click(); return; }
+  if ((e.code === 'KeyT' || e.code === 'Enter') && active() && !panelOpen) {
+    e.preventDefault();
+    if (net.mode === 'off') { if (e.code === 'KeyT') toast('Chat works in multiplayer games.'); }
+    else openChat();
+    return;
+  }
   if (e.code === 'ArrowDown' || e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyE') {
     if (panelOpen) closePanel(true);
@@ -2719,7 +3096,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked()) startEl.style.display = 'none';
   else {
     leftDown = false; mining = null; crack.visible = false;
-    if (inGame && !dead && !panelOpen && !pad.playing) {
+    if (inGame && !dead && !panelOpen && !pad.playing && !chatOpen) {
       startTitle.textContent = 'Paused. Click to continue';
       updateRoomInfo();
       startEl.style.display = 'flex';
@@ -2839,28 +3216,29 @@ function pollPad(dt) {
       padFocus = Math.max(0, Math.min(padFocus, btns.length - 1));
       if (sx || sy) {
         const fb = btns[padFocus];
-        const v = fb.dataset && fb.dataset.v !== undefined ? Number(fb.dataset.v) : -1;
+        const has = (b, k) => !!(b.dataset && b.dataset[k] !== undefined);
+        const v = has(fb, 'v') ? Number(fb.dataset.v) : -1;
         if (v >= 0) { // moving around the inventory grid
-          let row = Math.floor(v / 9) + sy;
+          const row = Math.floor(v / 9) + sy;
           const col = Math.max(0, Math.min(8, (v % 9) + sx));
-          if (row < 0) row = 0;
-          if (row > 3) { // below the hotbar: on to the recipes
-            const nxt = btns.findIndex(b => !(b.dataset && (b.dataset.v !== undefined || b.dataset.armor !== undefined)));
+          if (row < 0) { // up from the top row: on to the crafting / furnace slots
+            for (let ix = btns.length - 1; ix >= 0; ix--) if (has(btns[ix], 'top')) { padFocus = ix; break; }
+          } else if (row > 3) { // below the hotbar: on to the recipe book
+            const nxt = btns.findIndex(b => !has(b, 'v') && !has(b, 'top'));
             if (nxt >= 0) padFocus = nxt;
           } else {
-            const tgt = btns.findIndex(b => b.dataset && b.dataset.v !== undefined && Number(b.dataset.v) === row * 9 + col);
+            const tgt = btns.findIndex(b => has(b, 'v') && Number(b.dataset.v) === row * 9 + col);
             if (tgt >= 0) padFocus = tgt;
           }
-        } else if (sy) padFocus = (padFocus + sy + btns.length) % btns.length;
+        } else if (sy || sx) padFocus = (padFocus + (sy || sx) + btns.length) % btns.length;
       }
       panelEl.querySelectorAll('.padfocus').forEach(b => b.classList.remove('padfocus'));
       btns[padFocus].classList.add('padfocus');
       if (sx || sy) btns[padFocus].scrollIntoView({ block: 'nearest' });
       const fb2 = btns[padFocus];
-      const isSlot = !!(fb2.dataset && fb2.dataset.slot !== undefined);
       if (pressed(0)) fb2.click();
-      else if (isSlot && pressed(2)) slotClick(Number(fb2.dataset.slot), true, false);  // X: take half / put down one
-      else if (isSlot && pressed(5)) slotClick(Number(fb2.dataset.slot), false, true);  // RB: shift-click
+      else if (pressed(2) && fb2.onSecondary) fb2.onSecondary();  // X: take half / put down one
+      else if (pressed(5) && fb2.onShift) fb2.onShift();          // RB: shift-click
     }
     padPrev = cur;
     return;
@@ -3068,7 +3446,7 @@ function deleteWorld(id) {
 // the items to save: what you carry, plus whatever the mouse is holding right now (put in the first free slot)
 function savedSlots() {
   const sl = invSlots.slice();
-  if (held) { const e = sl.indexOf(null); if (e >= 0) sl[e] = held; }
+  for (const x of [held].concat(craftGrid2, craftGrid3)) if (x) { const e = sl.indexOf(null); if (e >= 0) sl[e] = x; }
   return sl;
 }
 function saveWorld(manual) {
@@ -3076,7 +3454,7 @@ function saveWorld(manual) {
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packEdits(), saplings: saplings,
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packEdits(), saplings: saplings, furnaces: furnaces,
     pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp }))
   };
   if (writeWorld(rec)) {
@@ -3099,6 +3477,10 @@ function resetWorldState() {
   for (let i = 0; i < NSLOTS; i++) invSlots[i] = null;
   for (const k in equipped) equipped[k] = null;
   uidN = 1; sel = 0; held = null; heldIconEl.style.display = 'none';
+  furnaces = {}; curFurnaceKey = null;
+  for (let i = 0; i < craftGrid2.length; i++) craftGrid2[i] = null;
+  for (let i = 0; i < craftGrid3.length; i++) craftGrid3[i] = null;
+  closeChat(false); clearChat();
   health = 20; hunger = 20; hungerT = 0; regenT = 0; starveT = 0; fallPeak = null;
   vy = 0; onGround = false; crouching = false; sprinting = false;
   edits = {}; editStr = {}; dirtyChunks = {};
@@ -3133,6 +3515,7 @@ function startWorld(rec) {
   worldTime = rec.time || 0;
   unpackEdits(rec.edits);
   saplings = rec.saplings || [];
+  furnaces = rec.furnaces || {};
   sp0 = rec.spawn || findSpawn();
   const pl = rec.player || sp0;
   p.x = pl.x; p.y = pl.y; p.z = pl.z;
@@ -3242,6 +3625,113 @@ document.getElementById('btnRespawn').addEventListener('click', () => {
 // save when you leave the page or switch tabs
 addEventListener('beforeunload', () => saveWorld(false));
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveWorld(false); });
+
+// ================= Furnaces =================
+// Each furnace keeps what is inside it (and how far it has cooked) in `furnaces`, which is saved with the world.
+function furnKey(x, y, z) { return x + ',' + y + ',' + z; }
+function curFurnace() { return curFurnaceKey ? furnaces[curFurnaceKey] : null; }
+function openFurnace(x, y, z) {
+  const k = furnKey(x, y, z);
+  if (!furnaces[k]) furnaces[k] = { inp: null, fuel: null, out: null, burn: 0, burnMax: 0, cook: 0 };
+  curFurnaceKey = k;
+  openPanel('furnace');
+}
+// when a furnace is broken, everything inside pops out
+function dumpFurnace(x, y, z) {
+  const k = furnKey(x, y, z);
+  const f = furnaces[k];
+  if (!f) return;
+  for (const s of [f.inp, f.fuel, f.out]) if (s) for (let i = 0; i < s.n; i++) dropItem(s.id, x + 0.5, y + 0.5, z + 0.5, { vy: 3, delay: 0.5 });
+  delete furnaces[k];
+  if (curFurnaceKey === k) { curFurnaceKey = null; if (panelOpen && panelMode === 'furnace') closePanel(false); }
+}
+function updateFurnaces(dt) {
+  for (const k in furnaces) {
+    const f = furnaces[k];
+    const pt = k.split(',').map(Number);
+    const c = chunks.get(ck(pt[0] >> 4, pt[2] >> 4));
+    if (c && getBlock(pt[0], pt[1], pt[2]) !== 32) { dumpFurnace(pt[0], pt[1], pt[2]); continue; } // the furnace is gone
+    const res = f.inp ? SMELT[f.inp.id] : undefined;
+    const canOut = res !== undefined && (!f.out || (f.out.id === res && f.out.n < MAXSTACK));
+    if (canOut && f.burn <= 0 && f.fuel) { // light the next piece of fuel
+      f.burnMax = f.burn = FUEL[f.fuel.id];
+      f.fuel.n--; if (f.fuel.n <= 0) f.fuel = null;
+      if (panelOpen && panelMode === 'furnace' && curFurnaceKey === k) refreshUI();
+    }
+    if (f.burn > 0) {
+      f.burn = Math.max(0, f.burn - dt);
+      if (canOut) {
+        f.cook += dt;
+        if (f.cook >= COOK_TIME) {
+          f.cook = 0;
+          f.inp.n--; if (f.inp.n <= 0) f.inp = null;
+          if (f.out) f.out.n++; else f.out = { id: res, n: 1 };
+          if (panelOpen && panelMode === 'furnace' && curFurnaceKey === k) refreshUI();
+        }
+      } else f.cook = 0;
+    } else f.cook = 0;
+    if (panelOpen && panelMode === 'furnace' && curFurnaceKey === k && furnUI) {
+      furnUI.flame.style.width = (f.burnMax > 0 ? f.burn / f.burnMax * 100 : 0) + '%';
+      furnUI.arrow.style.width = (f.cook / COOK_TIME * 100) + '%';
+    }
+  }
+}
+
+// ================= Chat (multiplayer) =================
+const chatLogEl = document.getElementById('chatLog');
+const chatInputEl = document.getElementById('chatInput');
+let chatOpen = false;
+const chatLines = [];
+function addChatLine(name, text) {
+  const el = document.createElement('div'); el.className = 'cl';
+  if (name) {
+    const nm = document.createElement('span');
+    nm.textContent = name + ': ';
+    nm.style.color = 'hsl(' + (hashStr(name) % 360) + ',70%,72%)'; nm.style.fontWeight = 'bold';
+    el.appendChild(nm);
+    el.appendChild(document.createTextNode(String(text)));
+  } else { el.textContent = String(text); el.style.color = '#ffe08a'; } // no name = a message from the game
+  chatLogEl.appendChild(el);
+  chatLines.push({ el, t: performance.now() });
+  while (chatLines.length > 40) { const o = chatLines.shift(); o.el.remove(); }
+}
+function updateChat() {
+  const now = performance.now();
+  for (const l of chatLines) l.el.style.opacity = (chatOpen || now - l.t < 12000) ? '1' : '0';
+}
+function clearChat() { chatLines.splice(0).forEach(l => l.el.remove()); }
+// host: show a message here and send it to every friend
+function chatBroadcast(name, text) {
+  addChatLine(name, text);
+  netSendAll({ t: 'chat', name: name, text: text });
+}
+function openChat() {
+  if (net.mode === 'off' || !inGame || dead) return;
+  chatOpen = true;
+  for (const k in keys) keys[k] = false;
+  document.exitPointerLock();
+  chatInputEl.value = '';
+  chatInputEl.style.display = 'block';
+  chatInputEl.focus();
+}
+function closeChat(relock) {
+  chatOpen = false;
+  chatInputEl.style.display = 'none';
+  chatInputEl.blur();
+  if (relock && inGame && !dead && !pad.playing) lockPointer();
+}
+function sendChat() {
+  const text = chatInputEl.value.trim().slice(0, 120);
+  chatInputEl.value = '';
+  if (!text) return;
+  if (net.mode === 'host') chatBroadcast(net.name, text);
+  else if (net.mode === 'guest') netSend({ t: 'chat', text: text }); // the host sends it back to everyone, including you
+}
+chatInputEl.addEventListener('keydown', (e) => {
+  if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); sendChat(); closeChat(true); }
+  else if (e.code === 'Escape') { e.preventDefault(); closeChat(true); }
+  e.stopPropagation();
+});
 
 // ================= Multiplayer: host a world, friends join with a room code =================
 // The host's computer runs the world and its animals. Friends connect straight to the host (through PeerJS) and see the same world.
@@ -3495,6 +3985,7 @@ function hostGot(conn, msg) {
     net.players[id] = { id, name: String(msg.name || 'Player').slice(0, 14), x: sp0.x, y: sp0.y, z: sp0.z, yaw: 0, pitch: 0, cr: false, item: 0 };
     hostSendWorld(conn);
     toast(net.players[id].name + ' joined');
+    chatBroadcast('', net.players[id].name + ' joined the game');
     updateRoomInfo();
     return;
   }
@@ -3515,6 +4006,12 @@ function hostGot(conn, msg) {
   } else if (msg.t === 'sap') {
     const tp = msg.tp | 0;
     if (tp >= 0 && tp <= 3 && isFinite(msg.x + msg.y + msg.z)) saplings.push({ x: msg.x | 0, y: msg.y | 0, z: msg.z | 0, t: tp, at: worldTime + 40 + Math.random() * 40 });
+  } else if (msg.t === 'chat') {
+    const now = performance.now();
+    if (now - (q.lastChat || 0) < 300) return; // no flooding
+    q.lastChat = now;
+    const text = String(msg.text || '').trim().slice(0, 120);
+    if (text) chatBroadcast(q.name, text);
   } else if (msg.t === 'bye') hostDrop(id);
 }
 function hostDrop(id) {
@@ -3525,6 +4022,7 @@ function hostDrop(id) {
   delete net.conns[id];
   try { if (c) c.close(); } catch (e) {}
   toast(q.name + ' left');
+  chatBroadcast('', q.name + ' left the game');
   updateRoomInfo();
 }
 
@@ -3576,6 +4074,7 @@ function guestGot(msg) {
   }
   else if (msg.t === 'mobs') applyMobSnapshot(msg.list);
   else if (msg.t === 'time') worldTime = msg.v;
+  else if (msg.t === 'chat') addChatLine(msg.name ? String(msg.name).slice(0, 14) : '', String(msg.text || '').slice(0, 120));
   else if (msg.t === 'hurt') playerBitten(Number(msg.dmg) || 1);
   else if (msg.t === 'loot') { for (const id of msg.ids) if (ITEMS[id]) dropItem(id, msg.x, msg.y, msg.z); }
 }
@@ -3599,6 +4098,7 @@ function netLeave() {
   net.mode = 'off'; net.peer = null; net.conns = {}; net.hostConn = null; net.players = {}; net.others = {};
   net.outBlocks = []; net.pending = null; net.code = '';
   clearAvatars(); clearPuppets();
+  closeChat(false); clearChat();
   updateRoomInfo();
 }
 
@@ -3742,6 +4242,8 @@ function worldTick(dt) {
   }
   updateDayNight(dt);
   if (net.mode !== 'guest') updateSaplings(dt);
+  updateFurnaces(dt);
+  updateChat();
   saveTimer += dt;
   if (saveTimer > 15) { saveTimer = 0; saveWorld(false); }
   netTick(dt);
