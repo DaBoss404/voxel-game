@@ -123,6 +123,14 @@
   #lavaOverlay{position:fixed;inset:0;background:rgba(255,90,0,.55);display:none;pointer-events:none}
   #bowBar{display:none;position:fixed;left:50%;bottom:92px;transform:translateX(-50%);width:140px;height:8px;background:rgba(0,0,0,.6);border:1px solid #fff;z-index:30}
   #bowBar i{display:block;height:100%;width:0;background:#ffd54a}
+  #mapScreen{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:60;align-items:center;justify-content:center}
+  .mapBox{background:#2a2a2a;border:3px solid #555;border-radius:10px;padding:12px;text-align:center;color:#fff;max-width:96vw;max-height:96vh;overflow:auto}
+  #mapCanvas{width:min(80vw,68vh,640px);height:min(80vw,68vh,640px);image-rendering:pixelated;display:block;margin:6px auto;border:2px solid #111;background:#123;cursor:pointer}
+  #compassHud{display:none;position:fixed;top:12px;left:50%;transform:translateX(-50%);text-align:center;color:#fff;font-size:14px;text-shadow:1px 1px 2px #000;z-index:35;pointer-events:none}
+  #compassHud .ring{width:56px;height:56px;margin:0 auto 3px;border-radius:50%;background:rgba(0,0,0,.55);border:2px solid #ddd;position:relative}
+  #compassArrow{position:absolute;inset:0}
+  #compassArrow .tri{position:absolute;left:50%;top:6px;margin-left:-6px;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:20px solid #ff4040}
+  #compassArrow .tail{position:absolute;left:50%;bottom:6px;margin-left:-4px;border-left:4px solid transparent;border-right:4px solid transparent;border-top:13px solid #eeeeee}
   #heldIcon{position:fixed;pointer-events:none;z-index:70;display:none;width:36px;height:36px}
   #death{position:fixed;inset:0;z-index:58;display:none;align-items:center;justify-content:center;background:rgba(120,0,0,.6);color:#fff}
   .dbox{width:min(420px,90vw);text-align:center}
@@ -154,6 +162,13 @@
   </div>
   <p class="hint">Press E or Esc to close</p>
 </div>
+<div id="mapScreen"><div class="mapBox">
+  <h2 style="margin:0 0 4px">Map</h2>
+  <canvas id="mapCanvas" width="256" height="256"></canvas>
+  <div class="note" id="mapNote"></div>
+  <div class="skRow"><button class="skb" id="btnMapZoom">Zoom out</button><button class="skb" id="btnMapClose">Close</button></div>
+</div></div>
+<div id="compassHud"><div class="ring"><div id="compassArrow"><i class="tri"></i><i class="tail"></i></div></div><div id="compassText"></div></div>
 <div id="chatLog"></div>
 <input id="chatInput" maxlength="120" placeholder="Type a message, then press Enter" autocomplete="off">
 <div id="heldIcon"></div>
@@ -559,6 +574,7 @@ const ITEMS = {
   137:{n:'Water Bucket',k:'waterbucket',kc:'#c8c8c8',dc:0x4a90d9}, 138:{n:'Lava Bucket',k:'lavabucket',kc:'#c8c8c8',dc:0xff6a10},
   139:{n:'Toucan Beak',k:'beak',kc:'#ff9a1a',dc:0xff9a1a}, 140:{n:'Lift Heart',k:'heart',kc:'#d0204a',dc:0xd0204a},
   141:{n:'Bottle of Venom',k:'venom',kc:'#cfe8f0',dc:0x9a40d0}, 142:{n:'Arrow',k:'arrow',kc:'#8a6a3a',dc:0x8a6a3a},
+  143:{n:'Paper',k:'paper',dc:0xf4f0e0}, 144:{n:'Map',k:'map',dc:0xe6d8a8}, 145:{n:'Village Compass',k:'compass',dc:0xb8b8b8},
   130:{n:'Bucket',k:'bucket',kc:'#c8c8c8',dc:0xc8c8c8}, 131:{n:'Glass Bottle',k:'bottle',kc:'#cfe8f0',dc:0xcfe8f0},
   132:{n:'Milk Bucket',k:'milkbucket',kc:'#c8c8c8',dc:0xf4f4f4}, 133:{n:'Bottle of Milk',k:'milkbottle',kc:'#cfe8f0',dc:0xf4f4f4},
   134:{n:'Raw Iron',k:'raw',kc:'#d8a888',dc:0xd8a888}, 135:{n:'Raw Copper',k:'raw',kc:'#d27a4a',dc:0xd27a4a}, 136:{n:'Raw Gold',k:'raw',kc:'#f2d23a',dc:0xf2d23a}
@@ -1266,6 +1282,8 @@ let bedSpawn = null;      // where you come back after dying (the bed you last u
 let lavaBurn = 0, bowCharge = 0, deathSpot = null;
 let oreVisionT = 0, oreMesh = null, oreScanT = 0, liftReady = 0, villageT = 0;
 const shots = [];          // blocks the Lift has thrown
+let mapOpen = false, mapScale = 2; // one map pixel is mapScale x mapScale blocks
+const knownVillages = {}; // villages you have been close to: id -> { x, z }
 const villageSpawnT = {};  // village id -> when it may get another villager
 const arrows = [];
 const fluidQ = new Set(); // water and lava cells that need a look
@@ -1432,6 +1450,9 @@ addShaped('Chest', 35, 1, ['PPP', 'P P', 'PPP'], { P: PL });                   /
 addShaped('Bow', 261, 1, [' ST', 'S T', ' ST'], { S: 100, T: 118 });           // sticks and string
 addShaped('Arrow', 142, 4, ['R', 'S', 'F'], { R: 3, S: 100, F: 107 });         // stone tip, stick, feather at the back
 addShaped('Toucan Sword', 260, 1, ['B', 'S'], { B: 139, S: 100 });             // a toucan beak on a stick
+addShaped('Paper', 143, 3, ['SSS'], { S: 100 });                          // 3 sticks in a row make 3 paper
+addShaped('Map', 144, 1, ['PP', 'PP'], { P: 143 });                       // 4 paper make a map
+addShaped('Village Compass', 145, 1, [' I ', 'ICI', ' I '], { I: 111, C: 114 }); // 4 iron ingots around a copper ingot
 addShaped('Bucket', 130, 1, ['I I', ' I '], { I: 111 });       // 3 iron ingots in a V
 addShaped('Glass Bottle', 131, 3, ['G G', ' G '], { G: 33 });  // 3 glass in a V makes 3 bottles
 addShaped('Shears', 119, 1, [' I', 'I '], { I: 111 });
@@ -1636,6 +1657,20 @@ function drawKind(cx, k, col) {
     R(5, 6, 1, 8, 'rgba(255,255,255,0.7)'); R(10, 7, 1, 7, 'rgba(0,0,0,0.18)'); R(6, 13, 4, 1, 'rgba(0,0,0,0.2)');
     if (k === 'milkbottle') R(6, 8, 4, 5, '#fafafa');
     if (k === 'venom') R(6, 8, 4, 5, '#9a40d0');
+  }
+  else if (k === 'paper') {
+    R(4, 2, 8, 12, '#f4f0e0'); R(4, 2, 8, 1, '#d8d2b8'); R(11, 3, 1, 11, '#d8d2b8');
+    for (let i = 0; i < 4; i++) R(5, 5 + i * 2, 5, 1, '#b8b2a0');
+  }
+  else if (k === 'map') {
+    R(2, 3, 12, 10, '#e6d8a8'); R(2, 3, 12, 1, '#b8a870'); R(2, 12, 12, 1, '#b8a870');
+    R(3, 4, 4, 3, '#6aa84f'); R(8, 5, 4, 3, '#4a90d9'); R(5, 9, 5, 3, '#6aa84f');
+    for (const q of [[11, 10], [10, 9], [12, 9], [10, 11], [12, 11]]) P(q[0], q[1], '#d02020');
+  }
+  else if (k === 'compass') {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d <= 6.6) P(x, y, d > 5.3 ? '#b8b8b8' : '#303030'); }
+    for (let i = 0; i < 5; i++) { P(8 + i, 7 - i, '#e03030'); P(7 - i, 8 + i, '#f0f0f0'); }
+    P(8, 8, '#dddddd'); P(7, 7, '#dddddd');
   }
   else if (k === 'beak') {
     R(3, 6, 8, 4, col); R(9, 7, 3, 2, '#e07a10'); R(2, 7, 2, 2, col); R(4, 6, 5, 1, 'rgba(255,255,255,0.35)'); R(5, 9, 6, 1, 'rgba(0,0,0,0.25)');
@@ -3616,6 +3651,12 @@ function useDown() {
     }
     return;
   }
+  if (id === 144) { openMap(); return; }
+  if (id === 145) {
+    const V = NEW_ON ? nearestVillage(p.x, p.z, 8) : null;
+    toast(V ? 'The nearest village is about ' + Math.round(Math.hypot(V.x - p.x, V.z - p.z)) + ' blocks away. Follow the red arrow at the top of the screen.' : (NEW_ON ? 'No village found nearby.' : 'Villages only exist in worlds made after they were added.'));
+    return;
+  }
   if (id === 140) { useHeart(); return; }
   if (id === 141) { toast('A bottle of platypus venom. Careful with it!'); return; }
   if (id === 130 || id === 131) { tryMilk(id, r); return; }
@@ -3638,6 +3679,11 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Escape') e.target.blur(); return; } // typing a name, a search or a chat message
   if (dead) { if (e.code === 'Enter') document.getElementById('btnRespawn').click(); return; }
+  if (mapOpen) { if (e.code === 'Escape' || e.code === 'KeyE' || e.code === 'KeyM') { e.preventDefault(); closeMap(true); } return; }
+  if (e.code === 'KeyM' && active() && !panelOpen) { // M opens a map you are carrying
+    if (invSlots.some(s => s && s.id === 144)) openMap(); else toast('You need a map. Craft one from 4 paper.');
+    return;
+  }
   if ((e.code === 'KeyT' || e.code === 'Enter') && active() && !panelOpen) {
     e.preventDefault();
     if (net.mode === 'off') { if (e.code === 'KeyT') toast('Chat works in multiplayer games.'); }
@@ -3670,7 +3716,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked()) startEl.style.display = 'none';
   else {
     leftDown = false; mining = null; crack.visible = false;
-    if (inGame && !dead && !panelOpen && !pad.playing && !chatOpen) {
+    if (inGame && !dead && !panelOpen && !pad.playing && !chatOpen && !mapOpen) {
       startTitle.textContent = 'Paused. Click to continue';
       updateRoomInfo();
       startEl.style.display = 'flex';
@@ -3772,6 +3818,14 @@ function pollPad(dt) {
   const pressed = i => cur[i] && !padPrev[i];
   const released = i => !cur[i] && padPrev[i];
   const ax = i => dz(gp.axes[i] || 0);
+
+  if (mapOpen) { // looking at the map: A zooms, B / Y / Start closes
+    pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false; pad.sprint = false;
+    if (pressed(0)) toggleMapZoom();
+    if (pressed(1) || pressed(3) || pressed(9)) closeMap(false);
+    padPrev = cur;
+    return;
+  }
 
   // title screen and death screen: D-pad or left stick moves between buttons, A presses
   if (menuOpen || dead) {
@@ -4058,7 +4112,7 @@ function saveWorld(manual) {
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packEdits(), saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn,
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packEdits(), saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn, known: knownVillages,
     pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp }))
   };
   if (writeWorld(rec)) {
@@ -4086,6 +4140,8 @@ function resetWorldState() {
   arrows.length = 0; fluidQ.clear();
   for (const sh of shots) scene.remove(sh.mesh);
   shots.length = 0; clearOreMesh(); oreVisionT = 0; liftReady = 0; villageT = 0; villageCache.clear();
+  for (const k in knownVillages) delete knownVillages[k];
+  mapOpen = false; document.getElementById('mapScreen').style.display = 'none'; document.getElementById('compassHud').style.display = 'none';
   for (const k in villageSpawnT) delete villageSpawnT[k];
   for (let i = 0; i < craftGrid2.length; i++) craftGrid2[i] = null;
   for (let i = 0; i < craftGrid3.length; i++) craftGrid3[i] = null;
@@ -4128,6 +4184,7 @@ function startWorld(rec) {
   furnaces = rec.furnaces || {};
   chests = rec.chests || {};
   bedSpawn = rec.bed || null;
+  Object.assign(knownVillages, rec.known || {});
   sp0 = rec.spawn || findSpawn();
   const pl = rec.player || sp0;
   p.x = pl.x; p.y = pl.y; p.z = pl.z;
@@ -4693,6 +4750,120 @@ function updateOreVision(dt) {
   if (oreScanT <= 0) { oreScanT = 1; scanOres(); }
   if (oreMesh && oreMesh.material) oreMesh.material.opacity = 0.55 + 0.25 * Math.sin(performance.now() / 150);
   if (oreVisionT <= 0) { clearOreMesh(); toast('The ore vision faded.'); }
+}
+
+// ================= Maps and the village compass =================
+const mapCanvas = document.getElementById('mapCanvas'), mapScreen = document.getElementById('mapScreen');
+const mapNoteEl = document.getElementById('mapNote'), mapZoomBtn = document.getElementById('btnMapZoom');
+const compassHud = document.getElementById('compassHud'), compassArrow = document.getElementById('compassArrow'), compassText = document.getElementById('compassText');
+let mapStats = null, knownT = 0, compassT = 0, compassTarget = null;
+// what color the land looks like from above
+function mapTerrainColor(x, z, h) {
+  if (h < SEA) { const d = Math.min(1, (SEA - h) / 14); return [Math.round(40 - 22 * d), Math.round(110 - 50 * d), Math.round(190 - 70 * d)]; } // sea: deeper is darker
+  if (h <= SEA + 1) return [226, 212, 150];                                                                                                 // beach
+  if (RAIN_ON && isRain(x, z)) return [26, 110 + Math.min(30, h), 44];                                                                      // rainforest
+  if (h > 46) return [236, 236, 244];                                                                                                       // snowy tops
+  if (h > 40) return [128, 128, 134];                                                                                                       // bare rock
+  const t = Math.min(1, (h - SEA) / 20);
+  return [Math.round(86 + 30 * t), Math.round(150 - 20 * t), Math.round(66 - 10 * t)];                                                      // grass
+}
+// the map shows the land around you as it was made (not what you built), plus the villages you have found
+function drawMap() {
+  const N = 256, sc = mapScale;
+  const x0 = Math.floor(p.x) - (N / 2) * sc, z0 = Math.floor(p.z) - (N / 2) * sc;
+  const W = N + 1, H = new Int16Array(W * W);
+  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) H[j * W + i] = colHeight(x0 + i * sc, z0 + j * sc);
+  const cx = mapCanvas.getContext('2d');
+  const img = cx.createImageData(N, N);
+  const st = { ocean: 0, land: 0, rain: 0, villages: 0 };
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const h = H[j * W + i];
+    const hnw = H[Math.max(0, j - 1) * W + Math.max(0, i - 1)], hse = H[Math.min(N, j + 1) * W + Math.min(N, i + 1)];
+    const shade = 1 + Math.max(-0.3, Math.min(0.3, (hse - hnw) * 0.04)); // land that faces north-west is lit
+    const wx = x0 + i * sc, wz = z0 + j * sc;
+    const c = mapTerrainColor(wx, wz, h);
+    if (h < SEA) st.ocean++; else st.land++;
+    if (RAIN_ON && h > SEA + 1 && isRain(wx, wz)) st.rain++;
+    const o = (j * N + i) * 4, sh = h < SEA ? 1 : shade;
+    img.data[o] = Math.max(0, Math.min(255, c[0] * sh)); img.data[o + 1] = Math.max(0, Math.min(255, c[1] * sh)); img.data[o + 2] = Math.max(0, Math.min(255, c[2] * sh)); img.data[o + 3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+  const mark = (wx, wz, size, border, fill) => {
+    const px = Math.round((wx - x0) / sc), py = Math.round((wz - z0) / sc);
+    if (px < 0 || py < 0 || px >= N || py >= N) return false;
+    cx.fillStyle = border; cx.fillRect(px - size - 1, py - size - 1, size * 2 + 2, size * 2 + 2);
+    cx.fillStyle = fill; cx.fillRect(px - size, py - size, size * 2, size * 2);
+    return true;
+  };
+  for (const id in knownVillages) if (mark(knownVillages[id].x, knownVillages[id].z, 2, '#ffffff', '#d02020')) st.villages++;
+  mark(sp0.x, sp0.z, 1, '#000000', '#ffffff');                      // the world spawn
+  mark(p.x, p.z, 2, '#000000', '#ffd54a');                           // you
+  cx.fillStyle = '#ff3030';                                          // the way you are facing
+  cx.fillRect(Math.round((p.x - x0) / sc - Math.sin(yaw) * 6) - 1, Math.round((p.z - z0) / sc - Math.cos(yaw) * 6) - 1, 3, 3);
+  mapNoteEl.textContent = 'Yellow = you (red dot = the way you face). White = world spawn. Red squares = villages you have found. This map shows about ' + (N * sc) + ' blocks across.';
+  mapZoomBtn.textContent = mapScale === 2 ? 'Zoom out' : 'Zoom in';
+  mapStats = st;
+  return st;
+}
+function openMap() {
+  if (!inGame || mapOpen) return;
+  mapOpen = true; mapScale = 2;
+  pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false; pad.sprint = false;
+  document.exitPointerLock();
+  mapScreen.style.display = 'flex';
+  drawMap();
+}
+function closeMap(relock) {
+  mapOpen = false;
+  mapScreen.style.display = 'none';
+  if (relock && inGame && !dead && !pad.playing && !panelOpen) lockPointer();
+}
+function toggleMapZoom() { mapScale = mapScale === 2 ? 8 : 2; drawMap(); }
+document.getElementById('btnMapClose').addEventListener('click', () => closeMap(true));
+mapZoomBtn.addEventListener('click', toggleMapZoom);
+mapCanvas.addEventListener('click', toggleMapZoom);
+// villages you walk close to get remembered (and shown on the map)
+function updateKnownVillages(dt) {
+  knownT -= dt;
+  if (knownT > 0 || !NEW_ON) return;
+  knownT = 1.5;
+  const cx0 = Math.floor(p.x / VCELL), cz0 = Math.floor(p.z / VCELL);
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+    const V = villageAt(cx0 + a, cz0 + b);
+    if (V && !knownVillages[V.id] && Math.hypot(p.x - V.x, p.z - V.z) < 80) { knownVillages[V.id] = { x: V.x, z: V.z }; toast('You found a village!'); }
+  }
+}
+// the closest village, looking outwards one ring of big squares at a time
+function nearestVillage(x, z, maxCells) {
+  const cx0 = Math.floor(x / VCELL), cz0 = Math.floor(z / VCELL);
+  let best = null, bd = Infinity;
+  for (let r = 0; r <= maxCells; r++) {
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) {
+      if (Math.max(Math.abs(a), Math.abs(b)) !== r) continue;
+      const V = villageAt(cx0 + a, cz0 + b);
+      if (V) { const d = Math.hypot(V.x - x, V.z - z); if (d < bd) { bd = d; best = V; } }
+    }
+    if (best && bd <= r * VCELL) break; // nothing in a farther ring can be closer
+  }
+  return best;
+}
+// 0 = straight ahead, 90 = to your right, 180 = behind you
+function compassAngle(tx, tz, px, pz, yawv) {
+  const dx = tx - px, dz = tz - pz;
+  const fwd = dx * -Math.sin(yawv) + dz * -Math.cos(yawv);
+  const right = dx * Math.cos(yawv) + dz * -Math.sin(yawv);
+  return Math.atan2(right, fwd) * 180 / Math.PI;
+}
+function updateCompass(dt) {
+  const holding = inGame && !dead && selId() === 145;
+  compassHud.style.display = holding ? 'block' : 'none';
+  if (!holding) return;
+  compassT -= dt;
+  if (compassT <= 0) { compassT = 0.5; compassTarget = NEW_ON ? nearestVillage(p.x, p.z, 8) : null; }
+  if (!NEW_ON) { compassText.textContent = 'No villages in older worlds'; return; }
+  if (!compassTarget) { compassText.textContent = 'No village found nearby'; return; }
+  compassArrow.style.transform = 'rotate(' + compassAngle(compassTarget.x, compassTarget.z, p.x, p.z, yaw).toFixed(1) + 'deg)';
+  compassText.textContent = 'Village: ' + Math.round(Math.hypot(compassTarget.x - p.x, compassTarget.z - p.z)) + ' blocks';
 }
 
 // ================= Chat (multiplayer) =================
@@ -5633,6 +5804,8 @@ function playerTick(dt) {
   updateDrops(dt);
   updateArrows(dt);
   updateOreVision(dt);
+  updateKnownVillages(dt);
+  updateCompass(dt);
   updateChunks(8);
   const r = raycastBlocks(6);
   if (r) { wire.visible = true; wire.position.set(r.hit[0] + 0.5, r.hit[1] + 0.5, r.hit[2] + 0.5); }
