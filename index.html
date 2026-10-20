@@ -2908,6 +2908,7 @@ function spawnMob(type, x, y, z) {
   });
   const made = mobs[mobs.length - 1];
   if (extra) Object.assign(made, extra);
+  if (type === 'lift' && DIM === 1) made.neutral = true; // Lift Men in their own dimension are calm until you hit one
   return made;
 }
 function removeMob(m) {
@@ -3587,7 +3588,7 @@ function damageMob(m, dmg, fx, fz, killer) {
   m.vy = 5; m.onGround = false;
   m.fleeX = fx; m.fleeZ = fz;
   if (m.spec.flying) { m.backoff = 1.2; m.chasing = true; } // a toucan that is hit flutters back for a moment, then comes at you again
-  if (m.spec.puffer || m.spec.otter || m.spec.bear) { m.aggro = 15; m.panic = 0; } // these fight back
+  if (m.spec.puffer || m.spec.otter || m.spec.bear || m.spec.lift) { m.aggro = 15; m.panic = 0; } // these fight back
   else if (m.spec.hostile && (WOLF_ATTACKS || m.spec.flying)) m.aggro = 10; else m.panic = 4;
   m.flash = 0.25;
   if (m.hp <= 0) { m.killer = killer; startDeath(m); }
@@ -5145,7 +5146,15 @@ function updateLift(m, dt) {
   for (let k = 0; k < 3; k++) { m.hideT[k] = Math.max(0, m.hideT[k] - dt); m.stones[k].visible = m.hideT[k] <= 0; }
   const np = nearestPlayer(m.x, m.y, m.z);
   let vx = 0, vy = 0, vz = 0;
-  if (np && np.dist < 45) {
+  if (m.neutral) m.aggro = Math.max(0, m.aggro - dt);
+  if (m.neutral && !(m.aggro > 0)) { // calm: it drifts about, a few blocks above the ground, and ignores you until you hit it
+    m.chasing = false; m.throwT = 2;
+    m.rot += Math.sin(m.walkT * 0.37) * 0.6 * dt;
+    vx = Math.sin(m.rot) * 0.6; vz = Math.cos(m.rot) * 0.6;
+    let gy = Math.floor(m.y);
+    while (gy > 1 && !solid(getBlock(Math.floor(m.x), gy, Math.floor(m.z)))) gy--;
+    vy = Math.max(-2, Math.min(2, (gy + 4 - m.y) * 1.2));
+  } else if (np && np.dist < 45) {
     const tx = np.x - m.x, tz = np.z - m.z, hd = Math.hypot(tx, tz) || 1;
     const wantY = np.y + 3.2 + Math.sin(m.walkT * 0.8) * 0.6;
     vy = Math.max(-3, Math.min(3, (wantY - m.y) * 1.5));
