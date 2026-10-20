@@ -260,8 +260,14 @@
 <script>
 // If something goes wrong, show the error on screen instead of failing silently
 window.addEventListener('error', function (e) {
-  var d = document.getElementById('start');
-  if (d) { d.style.display = 'flex'; d.textContent = 'Game error: ' + e.message + ' (line ' + e.lineno + ')'; }
+  var d = document.getElementById('errBox');
+  if (!d && document.body) {
+    d = document.createElement('div'); d.id = 'errBox';
+    d.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:200;background:rgba(160,20,20,.93);color:#fff;font:13px system-ui,sans-serif;padding:8px 10px;border-radius:8px';
+    d.onclick = function () { d.style.display = 'none'; };
+    document.body.appendChild(d);
+  }
+  if (d) { d.style.display = 'block'; d.textContent = 'Game error: ' + e.message + ' (line ' + e.lineno + '). Tap here to hide this.'; }
 });
 
 // ================= Settings =================
@@ -2341,13 +2347,15 @@ function renderPanel() {
   updateHeldIcon();
 }
 function locked() { return document.pointerLockElement === renderer.domElement; }
+// phones (iPhone browsers especially) have no pointer lock at all, so asking for it must never fail
+function unlockPointer() { try { if (document.exitPointerLock) document.exitPointerLock(); } catch (e) {} }
 // true when the mouse has the game, or a controller is playing
 function active() { return inGame && (locked() || pad.playing); }
 function openPanel(mode) {
   panelMode = mode; panelOpen = true;
   panelEl.style.display = 'block';
   startEl.style.display = 'none';
-  document.exitPointerLock();
+  unlockPointer();
   renderPanel();
   if (bookOpen) renderBook();
 }
@@ -2359,7 +2367,7 @@ function closePanel(relock) {
   curFurnaceKey = null; curChestKey = null;
   updateHeldIcon();
   startEl.style.display = (pad.playing || !inGame) ? 'none' : 'flex';
-  if (relock && !pad.playing) renderer.domElement.requestPointerLock();
+  if (relock && !pad.playing) lockPointer();
 }
 
 // ================= Health, hunger, armor =================
@@ -2436,7 +2444,7 @@ function die() {
   pad.sprint = false; pad.jump = false; pad.crouch = false; pad.mx = 0; pad.my = 0;
   keys.KeyW = false; keys.KeyA = false; keys.KeyS = false; keys.KeyD = false; keys.Space = false; keys.ArrowDown = false;
   panelOpen = false; panelEl.style.display = 'none';
-  try { document.exitPointerLock(); } catch (e) {}
+  try { unlockPointer(); } catch (e) {}
   startEl.style.display = 'none';
   document.body.style.cursor = '';
   deathEl.style.display = 'flex';
@@ -2494,7 +2502,7 @@ function eat(id) {
 // ================= Player =================
 const p = { x: 0, y: 40, z: 0 };
 let vy = 0, onGround = false, yaw = 0, pitch = 0;
-let crouching = false, crawling = false, sprinting = false, playerH = 1.8, eyeH = 1.6;
+let crouching = false, crawling = false, crawlWas = false, sprinting = false, playerH = 1.8, eyeH = 1.6;
 const keys = {};
 // controller state, filled in by pollPad()
 const pad = { mx: 0, my: 0, jump: false, crouch: false, sprint: false, playing: false, connected: false };
@@ -2583,7 +2591,24 @@ function update(dt) {
   } else if (feetW) fallPeak = null;
   else if (fallPeak === null || p.y > fallPeak) fallPeak = p.y;
 
-  eyeH += ((crawling ? 0.6 : (crouching ? 1.3 : 1.6)) - eyeH) * Math.min(1, dt * 14);
+  if (crawling && !crawlWas) eyeH = Math.min(eyeH, 0.65); // the head goes down at once when you start to crawl
+  crawlWas = crawling;
+  let crawlAhead = false; // about to crawl under something: lower the head before getting there
+  if (crouching && !crawling && (vx !== 0 || vz !== 0)) {
+    const sl = Math.hypot(vx, vz), ax = p.x + vx / sl * 0.55, az = p.z + vz / sl * 0.55;
+    crawlAhead = boxCollides(ax, p.y, az, 0.3, 1.5) && !boxCollides(ax, p.y, az, 0.3, 0.9);
+  }
+  eyeH += (((crawling || crawlAhead) ? 0.6 : (crouching ? 1.3 : 1.6)) - eyeH) * Math.min(1, dt * 14);
+  { // and whatever happens, the camera stays below any ceiling above you
+    let ceil = 4;
+    for (const ox of [-0.15, 0.15]) for (const oz of [-0.15, 0.15]) {
+      for (let k = 1; k <= 3; k++) {
+        const cy = Math.floor(p.y + 0.5) + k;
+        if (solid(getBlock(Math.floor(p.x + ox), cy, Math.floor(p.z + oz)))) { ceil = Math.min(ceil, cy - p.y); break; }
+      }
+    }
+    eyeH = Math.min(eyeH, Math.max(0.35, ceil - 0.14));
+  }
   camera.position.set(p.x, p.y + eyeH, p.z);
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
@@ -4097,7 +4122,65 @@ function attackDown() {
   if (m) {
     attackedPress = true;
     if (atkCd <= 0) { atkCd = 0.4; hitMob(m); }
+  } else if (net.mode !== 'off') {
+    const pl = playerAtRay(r ? Math.min(4, r.t) : 4); // another player
+    if (pl) { attackedPress = true; if (atkCd <= 0) { atkCd = 0.4; hitPlayer(pl); } }
   }
+}
+// ================= Attacking other players =================
+// who is in front of you (within reach)? Returns { id, st, t } or null
+function playerAtRay(maxD) {
+  if (net.mode === 'off') return null;
+  const view = net.mode === 'host' ? net.players : net.others;
+  const cp = Math.cos(pitch), dx = -Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = -Math.cos(yaw) * cp;
+  const ox = p.x, oy = p.y + eyeH, oz = p.z;
+  for (let t = 0.2; t <= maxD; t += 0.1) {
+    const x = ox + dx * t, y = oy + dy * t, z = oz + dz * t;
+    for (const id in view) {
+      const st = view[id];
+      if (!st) continue;
+      const h = st.cw ? 0.9 : (st.cr ? 1.5 : 1.8);
+      if (Math.abs(x - st.x) < 0.35 && Math.abs(z - st.z) < 0.35 && y >= st.y && y <= st.y + h) return { id, st, t };
+    }
+  }
+  return null;
+}
+function hitPlayer(pl) {
+  const g = selGear(), def = g ? TOOLS[g.id] : null, dmg = def ? def.dmg : 1;
+  if (def) wearSel(1);
+  const fx = r2(p.x), fz = r2(p.z);
+  if (net.mode === 'host') { if (pl.id !== 'host') netSendTo(pl.id, { t: 'pvpHurt', dmg, fx, fz, from: net.name }); }
+  else netSend({ t: 'pvp', to: pl.id, dmg, fx, fz });
+  flashAvatar(pl.id);
+}
+let pvpToastAt = 0;
+// another player hit you: armor helps, and you are knocked back a little
+function pvpHurt(dmg, fx, fz, from) {
+  if (dead) return;
+  const red = Math.min(0.8, armorPoints() * 0.04);
+  const fin = Math.max(1, Math.round(dmg * (1 - red)));
+  wearArmor();
+  hurt(fin);
+  const ax = p.x - fx, az = p.z - fz, l = Math.hypot(ax, az) || 1;
+  const nx = p.x + ax / l * 0.6, nz = p.z + az / l * 0.6;
+  if (!boxCollides(nx, p.y, p.z, 0.3, playerH)) p.x = nx;
+  if (!boxCollides(p.x, p.y, nz, 0.3, playerH)) p.z = nz;
+  vy = Math.max(vy, 3.5); onGround = false;
+  if (performance.now() - pvpToastAt > 1500) { pvpToastAt = performance.now(); toast((from || 'Someone') + ' hit you!'); }
+}
+// (the host checks every hit a friend reports: not too hard, not too often, and only from close by)
+function hostPvp(q, msg) {
+  if (net.pvp === false) return;
+  const dmg = Math.max(0, Math.min(14, Number(msg.dmg) || 0)), now = performance.now();
+  if (!dmg || now - (q.lastPvp || 0) < 250) return;
+  const fx = Number(msg.fx), fz = Number(msg.fz);
+  if (!isFinite(fx + fz)) return;
+  const to = String(msg.to);
+  const t = to === 'host' ? { x: p.x, z: p.z } : net.players[to];
+  if (!t || Math.hypot(q.x - t.x, q.z - t.z) > 8) return;
+  q.lastPvp = now;
+  if (to === 'host') pvpHurt(dmg, fx, fz, q.name);
+  else netSendTo(to, { t: 'pvpHurt', dmg, fx, fz, from: q.name });
 }
 function attackUp() { if (bowCharge > 0) useUp(); leftDown = false; mining = null; crack.visible = false; }
 // ---- milk: right-click a cow with a bucket or a glass bottle ----
@@ -4569,7 +4652,7 @@ function pollPad(dt) {
   if (pressed(9)) {
     // Start pauses
     if (pad.playing) { pad.playing = false; attackUp(); document.body.style.cursor = ''; startEl.style.display = 'flex'; }
-    else document.exitPointerLock();
+    else unlockPointer();
     pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false;
     padPrev = cur;
     return;
@@ -4914,7 +4997,7 @@ function quitToTitle() {
   saveWorld(false);
   netLeave();
   inGame = false;
-  try { document.exitPointerLock(); } catch (e) {}
+  try { unlockPointer(); } catch (e) {}
   resetWorldState();
   cur = null;
   startEl.style.display = 'none';
@@ -5649,7 +5732,7 @@ function openMap() {
   if (DIM === 1) { toast('The map shows nothing in the Lift dimension.'); return; }
   mapOpen = true; mapScale = 2;
   pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false; pad.sprint = false;
-  document.exitPointerLock();
+  unlockPointer();
   mapScreen.style.display = 'flex';
   drawMap();
 }
@@ -5771,7 +5854,7 @@ const handArm = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.17, 0.75), new THRE
 handArm.position.set(0, 0, -0.37); handArm.renderOrder = 1000; // the arm points away from the shoulder
 handGroup.add(handArm);
 const handFist = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.21, 0.21), new THREE.MeshBasicMaterial({ color: 0xe0b090, depthTest: false }));
-handFist.position.set(0, 0, -0.77); handFist.renderOrder = 1003;
+handFist.position.set(0, 0, -0.77); handFist.renderOrder = 1001;
 handGroup.add(handFist);
 const handHold = new THREE.Group(); // where the item is held: in the fist
 handHold.position.set(0, 0, -0.78);
@@ -5785,11 +5868,15 @@ function pushBox(pos, col, x, y, z, sx, sy, sz, c) {
     for (let q = 0; q < 6; q++) { const k = FACES[f].c[QUAD[q]]; pos.push(x + k[0] * sx, y + k[1] * sy, z + k[2] * sz); col.push(c[0] * shade, c[1] * shade, c[2] * shade); }
   }
 }
-function voxelItem(id) {
-  if (handVox[id] !== undefined) return handVox[id];
+const heldCache = {}, voxMatW = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+// the pieces of a held item's model: a small cube for blocks, a thick little model of the picture for everything else
+// (hand = true: drawn on top of everything, for your own hand; false: an ordinary object in the world, for other players)
+function heldParts(id, hand) {
+  const key = id + (hand ? 'h' : 'w');
+  if (heldCache[key] !== undefined) return heldCache[key];
   const it = ITEMS[id];
-  let mesh = null;
-  if (it.b && it.t !== undefined && BT[id]) { // a block: a small cube with the block's own pictures
+  let out = null;
+  if (it.b && it.t !== undefined && BT[id]) {
     const geo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
     const uv = geo.attributes.uv.array;
     [BT[id][1], BT[id][1], BT[id][0], BT[id][2], BT[id][1], BT[id][1]].forEach((tile, i) => {
@@ -5797,9 +5884,7 @@ function voxelItem(id) {
       uv[o] = u0; uv[o + 1] = v1; uv[o + 2] = u1; uv[o + 3] = v1; uv[o + 4] = u0; uv[o + 5] = v0; uv[o + 6] = u1; uv[o + 7] = v0;
     });
     geo.attributes.uv.needsUpdate = true;
-    mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: atlasTex, alphaTest: 0.4, depthTest: false }));
-    mesh.rotation.y = 0.7; mesh.rotation.x = 0.35; mesh.renderOrder = 1002;
-    mesh.userData = { block: true };
+    out = { geo, mat: new THREE.MeshBasicMaterial({ map: atlasTex, alphaTest: 0.4, depthTest: !hand }), block: true };
   } else if (it.t !== undefined || it.k) {
     const cv = document.createElement('canvas');
     cv.width = cv.height = 16;
@@ -5820,19 +5905,30 @@ function voxelItem(id) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      mesh = new THREE.Mesh(g, voxMat);
-      mesh.renderOrder = 1002; mesh.frustumCulled = false;
+      out = { geo: g, mat: hand ? voxMat : voxMatW, block: false };
     }
+  }
+  heldCache[key] = out;
+  return out;
+}
+function voxelItem(id) { // the model for your own hand
+  if (handVox[id] !== undefined) return handVox[id];
+  const k = heldParts(id, true);
+  let mesh = null;
+  if (k) {
+    mesh = new THREE.Mesh(k.geo, k.mat);
+    mesh.renderOrder = 1004; // drawn over the fist, so it never looks like it sinks into it
+    if (k.block) { mesh.rotation.y = 0.7; mesh.rotation.x = 0.35; mesh.userData = { block: true }; } else mesh.frustumCulled = false;
   }
   handVox[id] = mesh;
   return mesh;
 }
+function isToolish(id) { return !!TOOLS[id] || id === 261 || id === 119 || id === 120 || (ITEMS[id] && ITEMS[id].k === 'stick'); }
 // tools are held by the handle (the bottom left of the picture) with the blade up and out; other things sit in the fist
-function poseHeld(mesh, id) {
-  if (mesh.userData && mesh.userData.block) { mesh.position.set(0, 0.12, 0); return; }
-  const tool = !!TOOLS[id] || id === 261 || id === 119 || id === 120 || ITEMS[id].k === 'stick';
-  if (tool) { mesh.position.set(0.12, 0.15, 0); mesh.rotation.x = -0.5; mesh.rotation.y = -0.45; mesh.rotation.z = 0; }
-  else { mesh.position.set(0.02, 0.09, 0); mesh.rotation.x = -0.5; mesh.rotation.y = -0.45; mesh.rotation.z = 0; }
+function poseHeld(mesh, id) { // resting on top of the fist, the handle of a tool at its top edge
+  if (mesh.userData && mesh.userData.block) { mesh.position.set(0, 0.3, 0); return; }
+  if (isToolish(id)) { mesh.position.set(0.16, 0.31, 0); mesh.rotation.x = -0.5; mesh.rotation.y = -0.45; mesh.rotation.z = 0; }
+  else { mesh.position.set(0, 0.38, 0); mesh.rotation.x = -0.5; mesh.rotation.y = -0.45; mesh.rotation.z = 0; }
 }
 const handItemMat = new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, depthTest: false });
 const handItem = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), handItemMat);
@@ -6327,7 +6423,7 @@ function openChat() {
   if (!inGame || dead) return;
   chatOpen = true;
   for (const k in keys) keys[k] = false;
-  document.exitPointerLock();
+  unlockPointer();
   chatInputEl.value = '';
   chatInputEl.style.display = 'block';
   chatInputEl.focus();
@@ -6780,10 +6876,10 @@ function netSendTo(id, msg) { const c = net.conns[id]; if (c && c.open) c.send(m
 function netSendAll(msg, exceptId) { for (const id in net.conns) if (id !== exceptId) netSendTo(id, msg); }       // host -> every friend
 
 function playerList() {
-  const out = [{ id: 'host', name: net.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId() }];
+  const out = [{ id: 'host', name: net.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId(), cw: crawling, sw: (leftDown || handSwing > 0) ? 1 : 0 }];
   for (const id in net.players) {
     const q = net.players[id];
-    out.push({ id, name: q.name, x: r2(q.x), y: r2(q.y), z: r2(q.z), yaw: r2(q.yaw), pitch: r2(q.pitch), cr: q.cr, item: q.item });
+    out.push({ id, name: q.name, x: r2(q.x), y: r2(q.y), z: r2(q.z), yaw: r2(q.yaw), pitch: r2(q.pitch), cr: q.cr, item: q.item, cw: q.cw, sw: q.sw });
   }
   return out;
 }
@@ -6806,7 +6902,7 @@ function netTick(dt) {
     if (net.t - net.lastTime > 2) { net.lastTime = net.t; netSendAll({ t: 'time', v: worldTime }); }
   } else if (net.t - net.lastP > 0.1) {
     net.lastP = net.t;
-    netSend({ t: 'p', x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId() });
+    netSend({ t: 'p', x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId(), cw: crawling, sw: (leftDown || handSwing > 0) ? 1 : 0 });
   }
 }
 
@@ -6871,6 +6967,26 @@ function removeAvatar(id) {
   delete net.avatars[id];
 }
 function clearAvatars() { for (const id in net.avatars) removeAvatar(id); net.avatars = {}; }
+// what a player holds is shown in their right hand: a small cube for a block, a little model of the picture for the rest
+function setAvatarHeld(av, id) {
+  if (av.heldId === id) return;
+  av.heldId = id;
+  if (av.heldMesh) { av.holder.remove(av.heldMesh); av.heldMesh = null; }
+  if (!(id > 0 && ITEMS[id])) return;
+  const k = heldParts(id, false);
+  if (!k) return;
+  if (!av.holder) {
+    const tilt = new THREE.Group(); tilt.position.set(0, -0.66, 0); tilt.rotation.x = 1.35; // the end of the arm, undoing the arm's tilt
+    const face = new THREE.Group(); face.rotation.y = -Math.PI / 2;                          // seen from the side
+    tilt.add(face); av.arms[0].add(tilt); av.holder = face;
+  }
+  const mesh = new THREE.Mesh(k.geo, k.mat);
+  if (k.block) mesh.position.set(0, 0.16, 0);
+  else { mesh.scale.x = mesh.scale.y = mesh.scale.z = 0.85; if (isToolish(id)) mesh.position.set(0.09, 0.15, 0); else mesh.position.set(0, 0.22, 0); }
+  av.holder.add(mesh);
+  av.heldMesh = mesh;
+}
+function flashAvatar(id) { const av = net.avatars[id]; if (av) av.hitT = 0.25; }
 function updateAvatars(dt) {
   if (net.mode === 'off') return;
   const view = net.mode === 'host' ? net.players : net.others;
@@ -6883,6 +6999,7 @@ function updateAvatars(dt) {
     if (!av) {
       av = net.avatars[id] = makeAvatar(st.name || 'Player', sk);
       av.skinRef = sk;
+      av.baseCols = av.mats.map(m => (m.color && m.color.getHex) ? m.color.getHex() : 0xffffff);
       av.x = st.x; av.y = st.y; av.z = st.z;
       scene.add(av.group);
     }
@@ -6892,11 +7009,21 @@ function updateAvatars(dt) {
     av.walkT += dt * Math.min(12, speed * 2.2);
     const sw = speed > 0.3 ? Math.sin(av.walkT) * 0.8 : 0;
     av.legs[0].rotation.x = sw; av.legs[1].rotation.x = -sw;
-    av.arms[0].rotation.x = -sw; av.arms[1].rotation.x = sw;
-    av.group.position.set(av.x, av.y, av.z);
+    av.arms[1].rotation.x = sw;
+    setAvatarHeld(av, st.item | 0);
+    if (av.heldMesh) { // holding something: the right arm is out in front, and swings when they hit
+      av.swT = st.sw ? (av.swT || 0) + dt * 14 : 0;
+      av.arms[0].rotation.x = -1.35 + (st.sw ? Math.sin(av.swT) * 0.75 : 0);
+    } else av.arms[0].rotation.x = -sw;
+    av.group.position.set(av.x, av.y + (st.cw ? 0.22 : 0), av.z);
     av.group.rotation.y = (st.yaw || 0) + Math.PI;
-    av.group.scale.y = st.cr ? 0.88 : 1;
+    av.group.rotation.x = st.cw ? Math.PI / 2 : 0; // crawling: lying flat on their front
+    av.group.scale.y = (st.cr && !st.cw) ? 0.88 : 1;
+    av.label.visible = !st.cw;
     av.label.rotation.y = yaw - av.group.rotation.y;
+    if (av.hitT > 0) av.hitT -= dt;
+    const flashing = av.hitT > 0;
+    if (flashing !== !!av.flashing) { av.flashing = flashing; av.mats.forEach((m, i) => { if (m.color) m.color.set(flashing ? 0xff6060 : (av.baseCols && av.baseCols[i] !== undefined ? av.baseCols[i] : 0xffffff)); }); }
   }
 }
 
@@ -7010,7 +7137,7 @@ function hostGot(conn, msg) {
   if (!q) return;
   if (msg.t === 'p') {
     if (isFinite(msg.x + msg.y + msg.z)) { q.x = msg.x; q.y = msg.y; q.z = msg.z; }
-    q.yaw = Number(msg.yaw) || 0; q.pitch = Number(msg.pitch) || 0; q.cr = !!msg.cr; q.item = msg.item | 0;
+    q.yaw = Number(msg.yaw) || 0; q.pitch = Number(msg.pitch) || 0; q.cr = !!msg.cr; q.item = msg.item | 0; q.cw = !!msg.cw; q.sw = !!msg.sw;
   } else if (msg.t === 'bs' && Array.isArray(msg.list)) {
     netApplyBlocks(msg.list);
     netSendAll({ t: 'bs', list: msg.list }, id); // pass it on to the other friends
@@ -7038,7 +7165,8 @@ function hostGot(conn, msg) {
   } else if (msg.t === 'poison') {
     const x = Number(msg.x), y = Number(msg.y), z = Number(msg.z);
     if (isFinite(x) && isFinite(y) && isFinite(z) && Math.hypot(x - q.x, z - q.z) < 40) poisonArea(x, y, z);
-  } else if (msg.t === 'bye') hostDrop(id);
+  } else if (msg.t === 'pvp') hostPvp(q, msg);
+  else if (msg.t === 'bye') hostDrop(id);
 }
 function hostDrop(id) {
   const q = net.players[id];
@@ -7107,6 +7235,7 @@ function guestGot(msg) {
   else if (msg.t === 'milkNo') toast('This cow has no milk right now. Try again in a little while.');
   else if (msg.t === 'skin') { const sk = skinDecode(msg.data); if (sk && typeof msg.id === 'string') net.skins[msg.id.slice(0, 60)] = sk; }
   else if (msg.t === 'hurt') playerBitten(Number(msg.dmg) || 1);
+  else if (msg.t === 'pvpHurt') pvpHurt(Math.max(0, Math.min(14, Number(msg.dmg) || 1)), Number(msg.fx) || 0, Number(msg.fz) || 0, String(msg.from || '').slice(0, 14));
   else if (msg.t === 'loot') { for (const id of msg.ids) if (ITEMS[id]) dropItem(id, msg.x, msg.y, msg.z); }
 }
 function guestStart() {
