@@ -602,6 +602,7 @@ const bearHead = (tile, turn) => paintTile(tile, 0x6a3f1c, 0.2, P => {
   put(7, 11, 0x111111); put(8, 11, 0x111111); put(5, 6, 0x111111); put(10, 6, 0x111111);  // nose and eyes
 });
 bearHead(67, 1); bearHead(68, 2); bearHead(69, 0); bearHead(70, 3);
+paintTile(72, 0xa8793f, 0.1, P => { for (let y = 0; y < 16; y += 4) for (let x = 0; x < 16; x++) P(x, y, hx(0x7a5426)); for (let x = 0; x < 16; x += 5) for (let y = 0; y < 16; y++) if (y % 4) P(x, y, hx(0x8a6232)); });
 paintTile(71, 0x6a4a2a, 0.2, P => { for (let x = 4; x < 12; x++) for (let y = 4; y < 12; y++) if ((x - 7.5) * (x - 7.5) + (y - 7.5) * (y - 7.5) < 14) P(x, y, hx(0x1a0e06)); });
 const atlasTex = new THREE.CanvasTexture(atlas);
 atlasTex.magFilter = THREE.NearestFilter;
@@ -621,7 +622,7 @@ BT[34] = [42, 43, BT[12][2]]; BT[35] = [44, 45, BT[12][2]];
 BT[71] = [60, 61, BT[1][2]];
 BT[72] = [62, 62, 62]; BT[73] = [63, 63, 63]; BT[74] = [64, 64, 64]; BT[75] = [65, 65, 65];
 BT[76] = [66, 66, 66]; BT[77] = [67, 67, 67]; BT[78] = [68, 68, 68]; BT[79] = [69, 69, 69]; BT[80] = [70, 70, 70];
-BT[85] = [BT[12][0], BT[12][1], BT[12][2]]; BT[86] = [71, BT[2][1], BT[2][2]];
+BT[85] = [72, 72, 72]; BT[86] = [71, BT[2][1], BT[2][2]];
 BT[60] = BT[61] = [52, 52, 52]; BT[62] = BT[63] = [53, 53, 53];
 BT[64] = [54, 54, 54]; BT[65] = [55, 55, 55]; BT[66] = [51, 51, 51]; BT[70] = [59, 59, 59];
 BT[67] = [BT[12][0], 56, BT[12][2]]; BT[68] = [BT[12][0], 58, BT[12][2]];
@@ -670,7 +671,7 @@ const ITEMS = {
   146:{n:'Emerald',k:'emerald',dc:0x2ee66a}, 147:{n:'Door',k:'door',dc:0xa8793f}, 148:{n:'Book',k:'book',dc:0x8a4a2a},
   72:{n:'Liftstone',c:0x4a3a5a,b:1,t:62}, 73:{n:'Liftite Ore',c:0xc040e0,b:1,t:63}, 74:{n:'Lift Frame',c:0x2a1a3a,b:1,t:64},
   150:{n:'Raw Liftite',k:'raw',kc:'#c040e0',dc:0xc040e0}, 151:{n:'Liftite Ingot',k:'ingot',kc:'#c040e0',dc:0xc040e0},
-  85:{n:'Fence',c:0xa8793f,b:1,t:12}, 86:{n:'Rabbit Burrow',c:0x4a2e18,b:1,t:71},
+  85:{n:'Fence',c:0xa8793f,b:1,t:72}, 86:{n:'Rabbit Burrow',c:0x4a2e18,b:1,t:71},
   152:{n:'Lead',k:'lead',dc:0xc8a060}, 153:{n:'Carrot',k:'carrot',dc:0xf08a20},
   154:{n:'Raw Rabbit',k:'cooked',kc:'#e8a8a0',dc:0xe8a8a0}, 155:{n:'Cooked Rabbit',k:'cooked',kc:'#c08050',dc:0xc08050},
   156:{n:'Bear Meat',k:'cooked',kc:'#a04848',dc:0xa04848}, 157:{n:'Cooked Bear Meat',k:'cooked',kc:'#7a3b1e',dc:0x7a3b1e},
@@ -970,7 +971,7 @@ function liftHeight(x, z) {
   return Math.max(8, Math.min(HEIGHT - 12, h));
 }
 function liftiteAt(x, y, z) {
-  if (y <= 46 && hash3(Math.floor(x / 2) + 1900, Math.floor(y / 2) + 7, Math.floor(z / 2) + 411) < 0.014 && hash3(x + 19, y + 3, z + 11) < 0.7) return 73;
+  if (y <= 46 && hash3(Math.floor(x / 2) + 1900, Math.floor(y / 2) + 7, Math.floor(z / 2) + 411) < 0.005 && hash3(x + 19, y + 3, z + 11) < 0.7) return 73;
   return 0;
 }
 function generateLiftChunk(cx, cz) {
@@ -981,7 +982,7 @@ function generateLiftChunk(cx, cz) {
     const wx = ox + lx, wz = oz + lz;
     const h = liftHeight(wx, wz);
     top[lx + CH * lz] = h;
-    for (let y = 0; y <= h; y++) data[lx + CH * (lz + CH * y)] = (y < h - 1 ? liftiteAt(wx, y, wz) : 0) || 72;
+    for (let y = 0; y <= h; y++) data[lx + CH * (lz + CH * y)] = (y < h - 1 ? (liftiteAt(wx, y, wz) || oreAt(wx, y, wz)) : 0) || 72; // liftite, plus every ore of the overworld
     for (let y = 3; y <= h - 3; y++) if (caveAt(wx, y, wz, h)) data[lx + CH * (lz + CH * y)] = (y <= 12 && lavaPocket(wx, wz)) ? LAVA : 0;
   }
   const ed = edits[cx + ',' + cz];
@@ -1220,7 +1221,7 @@ function meshChunk(c) {
           else if (isL) { if (n !== 0 && !isWat(n) && !isPlant(n) && n !== 33) continue; }   // lava shows against air, water and glass
           else if (b === 75) { if (n !== 0) continue; }                                        // the portal only shows against air
           else if (b === 33) { if (n !== 0 && !isWat(n) && !isPlant(n)) continue; }          // glass only shows against air and water
-          else if (n !== 0 && !isWat(n) && !isPlant(n) && n !== 33 && !(lowH(n) > 0) && !isDoorBlk(n) && n !== 75) continue; // other blocks show their face through water, glass, beds and doors
+          else if (n !== 0 && !isWat(n) && !isPlant(n) && n !== 33 && !(lowH(n) > 0) && !isDoorBlk(n) && n !== 75 && !isFence(n)) continue; // (the ground next to a fence still has to be drawn) // other blocks show their face through water, glass, beds and doors
           const tile = bt[f === 2 ? 0 : (f === 3 ? 2 : 1)];
           const u0 = (tile % AT) / AT, v0 = 1 - (Math.floor(tile / AT) + 1) / AT;
           const s = isL ? 1 : F.shade * vr * lt; // lava glows
@@ -1308,15 +1309,28 @@ function pruneChunks() {
 }
 
 // ================= Collision =================
+// a fence is only a thin post (a quarter block wide, in the middle) with thin rails to its neighbours
+function fenceHit(ix, iy, iz, qx, qz, r) {
+  const x0 = qx - r, x1 = qx + r, z0 = qz - r, z1 = qz + r;
+  const hit = (ax0, ax1, az0, az1) => x0 < ix + ax1 && x1 > ix + ax0 && z0 < iz + az1 && z1 > iz + az0;
+  if (hit(0.375, 0.625, 0.375, 0.625)) return true;
+  const link = (dx, dz) => { const n = getBlock(ix + dx, iy, iz + dz); return isFence(n) || (solid(n) && !(lowH(n) > 0)); };
+  if (link(1, 0) && hit(0.625, 1, 0.4375, 0.5625)) return true;
+  if (link(-1, 0) && hit(0, 0.375, 0.4375, 0.5625)) return true;
+  if (link(0, 1) && hit(0.4375, 0.5625, 0.625, 1)) return true;
+  if (link(0, -1) && hit(0.4375, 0.5625, 0, 0.375)) return true;
+  return false;
+}
 function boxCollides(x, y, z, r, h) {
   for (let ix = Math.floor(x - r); ix <= Math.floor(x + r); ix++) for (let iz = Math.floor(z - r); iz <= Math.floor(z + r); iz++) {
     const fy = Math.floor(y - 0.5); // a fence is 1.5 blocks tall: you cannot jump over it
-    if (isFence(getBlock(ix, fy, iz)) && y < fy + 1.5 - 0.001) return true;
+    if (isFence(getBlock(ix, fy, iz)) && y < fy + 1.5 - 0.001 && fenceHit(ix, fy, iz, x, z, r)) return true;
   }
   for (let ix = Math.floor(x - r); ix <= Math.floor(x + r); ix++)
     for (let iy = Math.floor(y); iy <= Math.floor(y + h - 0.001); iy++)
       for (let iz = Math.floor(z - r); iz <= Math.floor(z + r); iz++) {
         const b = getBlock(ix, iy, iz);
+        if (isFence(b)) { if (fenceHit(ix, iy, iz, x, z, r)) return true; continue; }
         if (solid(b)) { const lh = lowH(b); if (lh && y >= iy + lh - 0.001) continue; return true; } // you can walk over a bed or a rug: they are lower than a block
       }
   return false;
@@ -1483,6 +1497,7 @@ const shots = [];          // blocks the Lift has thrown
 let mapOpen = false, mapScale = 2; // one map pixel is mapScale x mapScale blocks
 const knownVillages = {}; // villages you have been close to: id -> { x, z }
 const villageSpawnT = {};  // village id -> when it may get another villager
+const villageLiftT = {};   // village id -> when its Lift Men may be replaced (5 minutes after one is killed)
 const arrows = [];
 const fluidQ = new Set(); // water and lava cells that need a look
 function curChest() { return curChestKey ? chests[curChestKey] : null; }
@@ -1864,6 +1879,19 @@ function drawKind(cx, k, col) {
     R(5, 6, 1, 8, 'rgba(255,255,255,0.7)'); R(10, 7, 1, 7, 'rgba(0,0,0,0.18)'); R(6, 13, 4, 1, 'rgba(0,0,0,0.2)');
     if (k === 'milkbottle') R(6, 8, 4, 5, '#fafafa');
     if (k === 'venom') R(6, 8, 4, 5, '#9a40d0');
+  }
+  else if (k === 'lead') { // a coil of rope with a loop
+    for (let a = 0; a < 28; a++) {
+      const t = a / 28 * Math.PI * 2;
+      P(Math.round(8 + Math.cos(t) * 5), Math.round(8 + Math.sin(t) * 5), a % 2 ? '#c8a060' : '#a07840');
+      P(Math.round(8 + Math.cos(t) * 3), Math.round(8 + Math.sin(t) * 3), a % 2 ? '#a07840' : '#c8a060');
+    }
+    R(11, 11, 3, 3, '#c8a060'); R(12, 12, 1, 1, '#6a4a20'); P(10, 10, '#a07840');
+  }
+  else if (k === 'carrot') { // an orange carrot with green leaves
+    for (let i = 0; i < 9; i++) { const w = 3 - Math.floor(i / 3); R(3 + i, 13 - i - w, 1, w + 1, i % 2 ? '#f08a20' : '#e07810'); }
+    P(6, 9, '#b85a10'); P(8, 7, '#b85a10');
+    R(11, 3, 2, 2, '#3a9a30'); R(12, 1, 1, 3, '#4ab040'); R(13, 2, 2, 1, '#3a9a30'); R(10, 4, 1, 1, '#4ab040');
   }
   else if (k === 'shovel') {
     for (let i = 0; i < 9; i++) P(3 + i, 12 - i, '#8a5a2b'); // the handle
@@ -3119,12 +3147,6 @@ function trySpawnMobs(c) {
       if (ty) spawnMob(ty, wx, Math.max(ht, SEA) + 1, wz);
     }
   }
-  // a few wild rabbits on the grass (more of them in the woods)
-  if (NEW_ON && DIM === 0 && countMobs(['rabbit']) < 10 && Math.random() < 0.2) {
-    const lx = Math.floor(Math.random() * CH), lz = Math.floor(Math.random() * CH);
-    const wx = c.cx * CH + lx + 0.5, wz = c.cz * CH + lz + 0.5, h = c.top[lx + CH * lz];
-    if (h > SEA + 1 && c.data[lx + CH * (lz + CH * h)] === 1 && !isRain(wx, wz) && !isSwamp(wx, wz) && nearestPlayerDist(wx, wz) > 12) spawnMob('rabbit', wx, h + 1, wz);
-  }
   // grizzly bears live in thick woods (never in swamps or jungle)
   if (NEW_ON && countMobs(['bear']) < 4 && Math.random() < 0.12) {
     const lx = Math.floor(Math.random() * CH), lz = Math.floor(Math.random() * CH);
@@ -3601,8 +3623,8 @@ function updateMob(m, dt) {
   } else m.insideT = 0;
   // wolves: wild ones chase and bite, tamed ones follow you and fight for you
   m.chasing = false;
-  if (s.hostile) wolfAI(m, dt, s);
-  if (s.bear) bearAI(m, dt, s);
+  if (s.hostile && !m.leash) wolfAI(m, dt, s); // an animal on a lead behaves
+  if (s.bear && !m.leash) bearAI(m, dt, s);
   if (s.rabbit) rabbitAI(m, dt, s);
   if (m.leash) leashAI(m, dt);
   if (s.otter) otterAI(m, dt, s);
@@ -3670,7 +3692,8 @@ function giveLoot(who, ids, x, y, z) {
 function startDeath(m) {
   m.dying = true; m.dyingT = 0; m.flash = 0;
   if (m.leash) { m.leash = null; dropRope(m); dropItem(152, m.x, m.y + 0.5, m.z, { vy: 2 }); } // the lead drops
-  if (m.village) villageSpawnT[m.village] = worldTime + 180; // a village takes a while to get a new villager
+  if (m.village && m.type === 'villager') villageSpawnT[m.village] = worldTime + 180; // a village takes a while to get a new villager
+  if (m.village && m.type === 'lift') villageLiftT[m.village] = worldTime + 300;   // and 5 minutes to get a new Lift Man
   if (m.tamed) toast('Your wolf died.');
   m.mats.forEach(o => o.m.color.set(0xff3030));
   const ids = [];
@@ -4090,7 +4113,7 @@ function useDown() {
   { const lm0 = mobAtRay(r ? Math.min(4, r.t) : 4); // leads: lead an animal, let it go
     if (lm0 && !lm0.dying) {
       if (lm0.leash) { unleash(lm0); return; }
-      if (id === 152 && LEASHABLE[lm0.type]) { leashMob(lm0); return; }
+      if (id === 152 && canLeash(lm0)) { leashMob(lm0); return; }
     }
   }
   { const vm0 = mobAtRay(r ? Math.min(4, r.t) : 4);
@@ -4570,7 +4593,7 @@ function saveWorld(manual) {
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packWorldEdits(), edits1: lastE1, dim: DIM, portalLinks: portalLinks, saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn, known: knownVillages, cheats: cheatsOn, quest: { idx: quest.idx, taken: quest.taken }, colonies: colonies.concat(penColoniesNow()),
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packWorldEdits(), edits1: lastE1, dim: DIM, portalLinks: portalLinks, saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn, known: knownVillages, cheats: cheatsOn, quest: { idx: quest.idx, taken: quest.taken }, colonies: colonies.concat(penColoniesNow()), dens: Object.keys(denDone),
     pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp }))
   };
   if (writeWorld(rec)) {
@@ -4658,6 +4681,7 @@ function startWorld(rec) {
   Object.assign(knownVillages, rec.known || {});
   cheatsOn = !!rec.cheats && !rec.remote;
   colonies = (rec.colonies || []).slice();
+  for (const k of (rec.dens || [])) denDone[k] = true; // a burrow's rabbits are not born again every time you load the world
   quest.idx = (rec.quest && rec.quest.idx) || 0; quest.taken = !!(rec.quest && rec.quest.taken);
   sp0 = rec.spawn || findSpawn();
   const pl = rec.player || sp0;
@@ -5217,32 +5241,39 @@ function villageTick(dt) {
     for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
       const V = villageAt(cx0 + a, cz0 + b);
       if (!V || Math.hypot(pl.x - V.x, pl.z - V.z) > 70) continue;
-      if ((villageSpawnT[V.id] || 0) > worldTime) continue;
-      if (mobs.filter(m => m.village === V.id && !m.dying).length >= V.nVillagers) continue;
-      const sp = V.spots[Math.floor(Math.random() * V.spots.length)];
-      if (!chunks.has(ck(Math.floor(sp[0]) >> 4, Math.floor(sp[2]) >> 4))) continue;
-      const m = spawnMob('villager', sp[0], sp[1], sp[2]);
-      m.village = V.id; m.vc = { x: V.x, z: V.z };
-      villageSpawnT[V.id] = worldTime + 6;
+      // villagers
+      if ((villageSpawnT[V.id] || 0) <= worldTime && mobs.filter(m => m.type === 'villager' && m.village === V.id && !m.dying).length < V.nVillagers) {
+        const sp = V.spots[Math.floor(Math.random() * V.spots.length)];
+        if (chunks.has(ck(Math.floor(sp[0]) >> 4, Math.floor(sp[2]) >> 4))) {
+          const m = spawnMob('villager', sp[0], sp[1], sp[2]);
+          m.village = V.id; m.vc = { x: V.x, z: V.z };
+          villageSpawnT[V.id] = worldTime + 6;
+        }
+      }
+      // the village's own Lift Men: they float about the village, peaceful, until a villager is attacked
+      const wantL = V.nVillagers >= 6 ? 2 : 1;
+      if ((villageLiftT[V.id] || 0) <= worldTime && mobs.filter(m => m.type === 'lift' && m.village === V.id && !m.dying).length < wantL) {
+        const x = V.x + (Math.random() - 0.5) * 10, z = V.z + (Math.random() - 0.5) * 10, y = V.gy + 5;
+        if (chunks.has(ck(Math.floor(x) >> 4, Math.floor(z) >> 4)) && !boxCollides(x, y, z, 0.5, 2.1)) {
+          const L = spawnMob('lift', x, y, z);
+          L.village = V.id; L.vc = { x: V.x, z: V.z }; L.neutral = true;
+          villageLiftT[V.id] = worldTime + 8;
+        }
+      }
     }
   }
 }
-// hurting a villager brings a Lift
+// hurting a villager makes the Lift Men of that village angry (if there are none about, nothing happens)
 function provokeVillagers(m) {
-  if (net.mode === 'guest' || worldTime < liftReady) return;
-  if (mobs.some(x => x.type === 'lift' && !x.dying && Math.hypot(x.x - m.x, x.z - m.z) < 60)) return;
-  const np = nearestPlayer(m.x, m.y, m.z);
-  const bx = np ? np.x : m.x, by = np ? np.y : m.y, bz = np ? np.z : m.z;
-  for (let k = 0; k < 8; k++) {
-    const ang = Math.random() * Math.PI * 2 + k * 0.8;
-    const x = bx + Math.cos(ang) * 10, z = bz + Math.sin(ang) * 10, y = by + 6;
-    if (boxCollides(x, y, z, 0.5, 2.1)) continue;
-    liftReady = worldTime + 300; // 5 minutes before another Lift Man comes
-    const L = spawnMob('lift', x, y, z);
-    L.aggro = 30;
-    toast('A Lift Man has come to protect the village!');
-    if (net.mode === 'host') chatBroadcast('', 'A Lift Man has come to protect the village!');
-    return;
+  if (net.mode === 'guest') return;
+  let n = 0;
+  for (const x of mobs) {
+    if (x.type !== 'lift' || x.dying || !x.neutral || DIM === 1) continue;
+    if (m.village ? x.village === m.village : Math.hypot(x.x - m.x, x.z - m.z) < 60) { x.aggro = 60; n++; }
+  }
+  if (n) {
+    toast('The Lift Men of the village are angry!');
+    if (net.mode === 'host') chatBroadcast('', 'The Lift Men of the village are angry!');
   }
 }
 // the Lift floats above you, and lifts blocks from the ground to hurl at you
@@ -5275,10 +5306,18 @@ function updateLift(m, dt) {
   if (m.neutral && !(m.aggro > 0)) { // calm: it drifts about, a few blocks above the ground, and ignores you until you hit it
     m.chasing = false; m.throwT = 2;
     m.rot += Math.sin(m.walkT * 0.37) * 0.6 * dt;
+    if (m.vc && Math.hypot(m.vc.x - m.x, m.vc.z - m.z) > 12) m.rot = Math.atan2(m.vc.x - m.x, m.vc.z - m.z); // stay by the village
     vx = Math.sin(m.rot) * 0.6; vz = Math.cos(m.rot) * 0.6;
     let gy = Math.floor(m.y);
     while (gy > 1 && !solid(getBlock(Math.floor(m.x), gy, Math.floor(m.z)))) gy--;
     vy = Math.max(-2, Math.min(2, (gy + 4 - m.y) * 1.2));
+    if (m.leash) { // on a lead: it floats along behind you (or stays by the fence post it is tied to)
+      const L = m.leash, tx = L.kind === 'player' ? p.x : L.x, tz = L.kind === 'player' ? p.z : L.z, d = Math.hypot(tx - m.x, tz - m.z);
+      if (L.kind === 'player' && d > 24) { m.x = p.x + (m.x - p.x) / d * 3; m.z = p.z + (m.z - p.z) / d * 3; m.y = p.y + 3; }
+      else if (d > 3.5) { vx = (tx - m.x) / d * s.speed * (d > 9 ? 1.5 : 1); vz = (tz - m.z) / d * s.speed * (d > 9 ? 1.5 : 1); m.rot = Math.atan2(tx - m.x, tz - m.z); }
+      else { vx = 0; vz = 0; }
+      if (L.kind === 'player') vy = Math.max(-2, Math.min(2, (p.y + 3 - m.y) * 1.2));
+    }
   } else if (np && np.dist < 45) {
     const tx = np.x - m.x, tz = np.z - m.z, hd = Math.hypot(tx, tz) || 1;
     const wantY = np.y + 3.2 + Math.sin(m.walkT * 0.8) * 0.6;
@@ -5547,6 +5586,70 @@ const handGroup = new THREE.Group();
 const handArm = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.17, 0.75), new THREE.MeshBasicMaterial({ color: 0xe0b090, depthTest: false }));
 handArm.position.set(0, 0, -0.37); handArm.renderOrder = 1000; // the arm points away from the shoulder
 handGroup.add(handArm);
+const handFist = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.21, 0.21), new THREE.MeshBasicMaterial({ color: 0xe0b090, depthTest: false }));
+handFist.position.set(0, 0, -0.77); handFist.renderOrder = 1003;
+handGroup.add(handFist);
+const handHold = new THREE.Group(); // where the item is held: in the fist
+handHold.position.set(0, 0, -0.78);
+handGroup.add(handHold);
+let handHeldMesh = null;
+const handVox = {}, voxMat = new THREE.MeshBasicMaterial({ vertexColors: true, depthTest: false, side: THREE.DoubleSide });
+// a thick little 3D model of an item's picture (every pixel becomes a small block), or a small textured cube for blocks
+function pushBox(pos, col, x, y, z, sx, sy, sz, c) {
+  for (let f = 0; f < 6; f++) {
+    const shade = f > 3 ? 1 : (f === 2 ? 0.95 : 0.75);
+    for (let q = 0; q < 6; q++) { const k = FACES[f].c[QUAD[q]]; pos.push(x + k[0] * sx, y + k[1] * sy, z + k[2] * sz); col.push(c[0] * shade, c[1] * shade, c[2] * shade); }
+  }
+}
+function voxelItem(id) {
+  if (handVox[id] !== undefined) return handVox[id];
+  const it = ITEMS[id];
+  let mesh = null;
+  if (it.b && it.t !== undefined && BT[id]) { // a block: a small cube with the block's own pictures
+    const geo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const uv = geo.attributes.uv.array;
+    [BT[id][1], BT[id][1], BT[id][0], BT[id][2], BT[id][1], BT[id][1]].forEach((tile, i) => {
+      const u0 = (tile % AT) / AT, u1 = u0 + 1 / AT, v1 = 1 - Math.floor(tile / AT) / AT, v0 = v1 - 1 / AT, o = i * 8;
+      uv[o] = u0; uv[o + 1] = v1; uv[o + 2] = u1; uv[o + 3] = v1; uv[o + 4] = u0; uv[o + 5] = v0; uv[o + 6] = u1; uv[o + 7] = v0;
+    });
+    geo.attributes.uv.needsUpdate = true;
+    mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: atlasTex, alphaTest: 0.4, depthTest: false }));
+    mesh.rotation.y = 0.7; mesh.rotation.x = 0.35; mesh.renderOrder = 1002;
+    mesh.userData = { block: true };
+  } else if (it.t !== undefined || it.k) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 16;
+    const cx = cv.getContext('2d');
+    if (it.t !== undefined) cx.drawImage(atlas, (it.t % AT) * TS, Math.floor(it.t / AT) * TS, TS, TS, 0, 0, 16, 16);
+    else drawKind(cx, it.k, it.kc);
+    const px = cx.getImageData(0, 0, 16, 16).data;
+    const pos = [], col = [];
+    const U = 0.034, TH = 0.05;
+    let n = 0;
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const o = (y * 16 + x) * 4;
+      if (px[o + 3] <= 40) continue;
+      pushBox(pos, col, (x - 7.5) * U, (7.5 - y) * U - U, -TH / 2, U, U, TH, [px[o] / 255, px[o + 1] / 255, px[o + 2] / 255]);
+      n++;
+    }
+    if (n) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      mesh = new THREE.Mesh(g, voxMat);
+      mesh.renderOrder = 1002; mesh.frustumCulled = false;
+    }
+  }
+  handVox[id] = mesh;
+  return mesh;
+}
+// tools are held by the handle (the bottom left of the picture) with the blade up and out; other things sit in the fist
+function poseHeld(mesh, id) {
+  if (mesh.userData && mesh.userData.block) { mesh.position.set(0, 0.12, 0); return; }
+  const tool = !!TOOLS[id] || id === 261 || id === 119 || id === 120 || ITEMS[id].k === 'stick';
+  if (tool) { mesh.position.set(0.12, 0.15, 0); mesh.rotation.x = -0.5; mesh.rotation.y = -0.45; mesh.rotation.z = 0; }
+  else { mesh.position.set(0.02, 0.09, 0); mesh.rotation.x = -0.5; mesh.rotation.y = -0.45; mesh.rotation.z = 0; }
+}
 const handItemMat = new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, depthTest: false });
 const handItem = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), handItemMat);
 handItem.position.set(-0.03, 0.2, -0.82); handItem.rotation.y = 0.3; handItem.rotation.z = -0.35; handItem.renderOrder = 1001; // held at the end of the arm
@@ -5562,13 +5665,19 @@ function updateHand(dt) {
   const id = selId();
   if (id !== handLastId) {
     handLastId = id; handEquip = 1;
-    handItem.visible = id > 0 && !!ITEMS[id];
-    if (handItem.visible) { handItemMat.map = itemMat(id).map; handItemMat.needsUpdate = true; handItem.scale.x = handItem.scale.y = ITEMS[id].b ? 0.8 : 1; }
+    if (handHeldMesh) { handHold.remove(handHeldMesh); handHeldMesh = null; }
+    handItem.visible = false;
+    if (id > 0 && ITEMS[id]) {
+      handHeldMesh = voxelItem(id);
+      if (handHeldMesh) { handHold.add(handHeldMesh); poseHeld(handHeldMesh, id); }
+      else { handItem.visible = true; handItemMat.map = itemMat(id).map; handItemMat.needsUpdate = true; handItem.scale.x = handItem.scale.y = ITEMS[id].b ? 0.8 : 1; } // (a flat picture for things that have no pixels)
+    }
   }
   if (handSkinRef !== mySkin) { // the hand has your skin's color
     handSkinRef = mySkin;
     const o = (28 * 64 + 45) * 4;
-    handArm.material.color.set(mySkin ? ((mySkin[o] << 16) | (mySkin[o + 1] << 8) | mySkin[o + 2]) : 0xe0b090);
+    const hc = mySkin ? ((mySkin[o] << 16) | (mySkin[o + 1] << 8) | mySkin[o + 2]) : 0xe0b090;
+    handArm.material.color.set(hc); handFist.material.color.set(hc);
   }
   handEquip = Math.max(0, handEquip - dt * 5);
   if (handSwing > 0) { handSwing += dt / 0.28; if (handSwing >= 1) handSwing = (leftDown && mining) ? 0.001 : 0; } // swings when you hit, mine or use something
@@ -5850,7 +5959,6 @@ function checkPortal(dt) {
 function rabbitAI(m, dt, s) {
   m.hopT = (m.hopT || 0) - dt;
   const np = nearestPlayer(m.x, m.y, m.z);
-  if (np && np.dist < 5 && m.panic <= 0 && !m.pen && Math.random() < dt * 2) { m.panic = 2; m.fleeX = np.x; m.fleeZ = np.z; }
   if ((m.moving || m.panic > 0) && m.onGround && m.hopT <= 0) { m.vy = 4.5; m.hopT = 0.3 + Math.random() * 0.25; } // they hop
 }
 function nearFence(x, y, z, r) {
@@ -5925,7 +6033,8 @@ function colonyTick(dt) {
     else if (n > c.n) toast('While you were away your rabbits bred: there are ' + n + ' now.');
   }
 }
-const LEASHABLE = { sheep: 1, cow: 1, pig: 1, chicken: 1, rabbit: 1, platypus: 1, otter: 1 };
+const LEASHABLE = { sheep: 1, cow: 1, pig: 1, chicken: 1, rabbit: 1, platypus: 1, otter: 1, wolf: 1, bear: 1 };
+function canLeash(m) { return !!LEASHABLE[m.type] || (m.type === 'lift' && DIM === 1); } // Lift Men can only be led in their own dimension
 const ropeMat = new THREE.MeshBasicMaterial({ color: 0xc8a060 });
 function dropRope(m) { if (m.rope) { scene.remove(m.rope); m.rope = null; } }
 function leashMob(m) {
