@@ -700,6 +700,7 @@ const ITEMS = {
   152:{n:'Lead',k:'lead',dc:0xc8a060}, 153:{n:'Carrot',k:'carrot',dc:0xf08a20},
   154:{n:'Raw Rabbit',k:'cooked',kc:'#e8a8a0',dc:0xe8a8a0}, 155:{n:'Cooked Rabbit',k:'cooked',kc:'#c08050',dc:0xc08050},
   156:{n:'Bear Meat',k:'cooked',kc:'#a04848',dc:0xa04848}, 157:{n:'Cooked Bear Meat',k:'cooked',kc:'#7a3b1e',dc:0x7a3b1e},
+  158:{n:'Psychotic Rabbit Meat',k:'cooked',kc:'#c0307a',dc:0xc0307a},
   143:{n:'Paper',k:'paper',dc:0xf4f0e0}, 144:{n:'Map',k:'map',dc:0xe6d8a8}, 145:{n:'Village Compass',k:'compass',dc:0xb8b8b8},
   130:{n:'Bucket',k:'bucket',kc:'#c8c8c8',dc:0xc8c8c8}, 131:{n:'Glass Bottle',k:'bottle',kc:'#cfe8f0',dc:0xcfe8f0},
   132:{n:'Milk Bucket',k:'milkbucket',kc:'#c8c8c8',dc:0xf4f4f4}, 133:{n:'Bottle of Milk',k:'milkbottle',kc:'#cfe8f0',dc:0xf4f4f4},
@@ -763,7 +764,7 @@ const BI = {
   23:{h:0.05,d:121}, 24:{h:0.05,d:122}, 25:{h:0.05,d:123},
   26:{h:2,tool:'axe',d:26}, 27:{h:0.3,d:0}, 28:{h:1.6,tool:'axe',d:28}, 29:{h:0.05,d:124}, 30:{h:0.05,d:0}, 31:{h:0.9,tool:'shovel',d:2}, 32:{h:2.2,tool:'pick',d:32}, 33:{h:0.4,d:33}, 34:{h:0.6,d:34}, 35:{h:1.2,tool:'axe',d:35}, 47:{h:0.6,d:47}, 48:{h:0.6,d:48}, 49:{h:0.6,d:49}, 50:{h:0.6,d:50}, 60:{h:1,tool:'axe',d:147}, 61:{h:1,tool:'axe',d:147}, 62:{h:1,tool:'axe',d:147}, 63:{h:1,tool:'axe',d:147}, 64:{h:0.6,d:64}, 65:{h:0.6,d:65}, 66:{h:4,tool:'pick',d:146,minTier:3}, 67:{h:1.2,tool:'axe',d:67}, 68:{h:1.2,tool:'axe',d:68}, 70:{h:0.3,d:0}, 76:{h:0.3,d:0}, 77:{h:0.3,d:0}, 78:{h:0.3,d:0}, 79:{h:0.3,d:0}, 80:{h:0.3,d:0}, 85:{h:1.2,tool:'axe',d:85}, 86:{h:0.9,tool:'shovel',d:2}, 72:{h:2.2,tool:'pick',d:72}, 73:{h:4.5,tool:'pick',d:150,minTier:4}, 74:{h:3,tool:'pick',d:74}, 75:{h:0.1,d:0}, 71:{h:0.9,tool:'shovel',d:2}, 51:{h:0.6,d:34}, 52:{h:0.6,d:34}, 53:{h:0.6,d:34}, 54:{h:0.6,d:34}, 55:{h:0.6,d:34}, 56:{h:0.6,d:34}, 57:{h:0.6,d:34}, 58:{h:0.6,d:34}
 };
-const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2, 125: 8, 126: 8, 127: 6, 128: 6, 129: 5, 132: 4, 133: 3, 153: 3, 154: 3, 155: 6, 156: 5, 157: 9 };
+const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2, 125: 8, 126: 8, 127: 6, 128: 6, 129: 5, 132: 4, 133: 3, 153: 3, 154: 3, 155: 6, 156: 5, 157: 9, 158: 5 };
 const EAT_RETURN = { 132: 130, 133: 131 }; // drinking milk gives the empty bucket or bottle back
 // Furnace: what it can smelt or cook (what goes in -> what comes out), how many seconds each fuel burns, and seconds per item
 const SMELT = { 154: 155, 156: 157, 150: 151, 65: 64, 4: 33, 103: 125, 104: 126, 105: 127, 106: 128, 112: 129, 134: 111, 135: 114, 136: 115 }; // sand -> glass, raw food -> cooked, raw ore -> ingots
@@ -947,6 +948,7 @@ function fillVillageChest(c, x, y, z) {
     if (!c.slots[slot]) { c.slots[slot] = { id: e[0], n: q }; placed++; }
   }
   if (rnd() < 0.15) c.slots[Math.floor(rnd() * 27)] = { id: 261, g: { uid: uidN++, id: 261, dur: 385 } }; // sometimes a bow
+  if (rnd() < 0.12) c.slots[Math.floor(rnd() * 27)] = { id: 158, n: 1 }; // and now and then a piece of psychotic rabbit meat
 }
 // flatten the ground inside the village circle and put the paths, well and houses down (the chunk's own part of them)
 function stampVillages(data, top, ox, oz) {
@@ -1509,6 +1511,7 @@ let lavaBurn = 0, bowCharge = 0, deathSpot = null;
 let burnT = 0, burnTick = 0, sleepState = null, handSwing = 0, cheatsOn = false;
 let DIM = 0;               // 0 = the overworld, 1 = the Lift dimension
 let colonies = [];         // rabbits left behind in a fenced pen: { x, y, z, n, t }
+let keptAnimals = [];      // an alligator that was kept in a fence while you were away: { type, x, y, z }
 const penTimers = {}, denDone = {};
 const dimStore = [null, null]; // the changes you made in the dimension you are NOT in
 const portalLinks = { over: null, lift: null }; // the portal you came in by, in each dimension
@@ -2231,7 +2234,7 @@ function renderBook() {
 const TRADES = [
   { cost: 1, id: 142, q: 6 }, { cost: 1, id: 125, q: 3 }, { cost: 1, id: 100, q: 12 }, { cost: 2, id: 130, q: 1 }, { cost: 2, id: 131, q: 3 },
   { cost: 3, id: 261, q: 1, gear: true }, { cost: 3, id: 119, q: 1, gear: true }, { cost: 4, id: 144, q: 1 }, { cost: 4, id: 145, q: 1 },
-  { cost: 5, id: 111, q: 8 }, { cost: 6, id: 116, q: 1 }
+  { cost: 5, id: 111, q: 8 }, { cost: 6, id: 116, q: 1 }, { cost: 7, id: 158, q: 1 }
 ];
 function buyTrade(t) {
   if (count(146) < t.cost) { toast('You need ' + t.cost + ' emerald' + (t.cost > 1 ? 's' : '') + '.'); return; }
@@ -2496,6 +2499,7 @@ function eat(id) {
   take(id, 1);
   if (EAT_RETURN[id]) giveItem(EAT_RETURN[id], 1);
   if (EAT_RETURN[id] && playerPoison) { playerPoison = false; toast('The milk cured the poison.'); }
+  if (id === 158) { playerPoison = true; toast('Yuck! The psychotic rabbit meat poisoned you. Drink milk to cure it.'); }
   refreshStats();
 }
 
@@ -2653,6 +2657,7 @@ const MOBS = {
   lift:     { hp: 40, speed: 2.4, bw: 0.6, bh: 1.3, bl: 0.5, hs: 0.5, hostile: true, lift: true, dmg: 4, r: 0.55 },
   otter:    { hp: 10, speed: 1.3, bw: 0.35, bh: 0.3, bl: 0.85, legH: 0.15, legW: 0.1, hs: 0.3, color: 0x7a5230, head: 0x8a6240, leg: 0x5a3a20, legs: 4, r: 0.35, aquatic: true, swims: true, otter: true, dmg: 2 },
   alligator: { hp: 40, speed: 0.6, bw: 0.6, bh: 0.4, bl: 1.6, legH: 0.2, legW: 0.16, hs: 0.45, color: 0x3a6a2a, head: 0x2f5a22, leg: 0x2f5a22, legs: 4, r: 0.6, aquatic: true, swims: true, alligator: true },
+  psycho:   { hp: 9, speed: 1.5, bw: 0.34, bh: 0.34, bl: 0.6, legH: 0.14, legW: 0.09, hs: 0.24, color: 0x7a3030, head: 0x8a3636, leg: 0x4a1a1a, legs: 4, r: 0.3, rabbit: true, psycho: true, dmg: 3 }, // triple the health of a rabbit
   rabbit:   { hp: 3, speed: 1.1, bw: 0.28, bh: 0.28, bl: 0.5, legH: 0.12, legW: 0.08, hs: 0.2, color: 0xb89a70, head: 0xb89a70, leg: 0x9a7a50, legs: 4, r: 0.25, rabbit: true },
   bear:     { hp: 60, speed: 1.0, bw: 0.9, bh: 0.9, bl: 1.5, legH: 0.55, legW: 0.3, hs: 0.6, color: 0x5a3a22, head: 0x4a2e1a, leg: 0x3a2412, legs: 4, r: 0.7, bear: true, dmg: 8 }
 };
@@ -2674,7 +2679,8 @@ const DROPS = {
   lift:    [{ id: 140, min: 1, max: 1, ch: 0.6 }], // the Lift Man's heart
   otter:   [{ id: 108, min: 1, max: 2, ch: 1.0 }, { id: 112, min: 1, max: 1, ch: 0.5 }],
   bear:    [{ id: 156, min: 2, max: 4, ch: 1.0 }, { id: 70, min: 1, max: 1, ch: 0.3 }], // bear meat, and 30% for a bear skin
-  rabbit:  [{ id: 153, min: 1, max: 2, ch: 1.0 }, { id: 154, min: 1, max: 1, ch: 1.0 }] // carrots and rabbit meat
+  rabbit:  [{ id: 153, min: 1, max: 2, ch: 1.0 }, { id: 154, min: 1, max: 1, ch: 1.0 }], // carrots and rabbit meat
+  psycho:  [{ id: 158, min: 1, max: 1, ch: 1.0 }] // psychotic rabbit meat
 };
 const mobs = [];
 const net = {
@@ -2973,7 +2979,7 @@ function buildRabbitExtras(g, mk, s, hy, hz) {
   const part = (w, h, l, c, x, y, z) => { const m = mk(w, h, l, c); m.position.set(x, y, z); g.add(m); return m; };
   for (const sx of [-1, 1]) part(0.05, 0.26, 0.08, 0xa88a62, sx * s.hs * 0.28, hy + s.hs * 0.5 + 0.12, hz - 0.02); // long ears
   part(0.12, 0.12, 0.12, 0xf4f0e8, 0, s.legH + s.bh * 0.7, -s.bl / 2 - 0.04);                                         // white tail
-  for (const sx of [-1, 1]) part(0.04, 0.04, 0.04, 0x111111, sx * s.hs * 0.3, hy + 0.03, hz + s.hs / 2 - 0.01);
+  for (const sx of [-1, 1]) part(0.04, 0.04, 0.04, s.psycho ? 0xff2020 : 0x111111, sx * s.hs * 0.3, hy + 0.03, hz + s.hs / 2 - 0.01); // a psychotic rabbit has red eyes
   part(0.06, 0.04, 0.04, 0xe8a0a0, 0, hy - 0.03, hz + s.hs / 2);
 }
 function buildBearExtras(g, mk, s, hy, hz) {
@@ -3073,7 +3079,7 @@ function spawnMob(type, x, y, z) {
   });
   const made = mobs[mobs.length - 1];
   if (extra) Object.assign(made, extra);
-  if (type === 'lift' && DIM === 1) made.neutral = true; // Lift Men in their own dimension are calm until you hit one
+  if (type === 'lift') made.neutral = true; // Lift Men are calm until you hit one (or attack a villager)
   return made;
 }
 function removeMob(m) {
@@ -3099,7 +3105,7 @@ function spawnDenRabbits(c) {
   if (denDone[key] || c.data[sp[0] + CH * (sp[1] + CH * h)] !== 86) return;
   denDone[key] = true;
   const x = c.cx * CH + sp[0] + 0.5, z = c.cz * CH + sp[1] + 0.5;
-  spawnMob('rabbit', x - 0.4, h - 4, z); spawnMob('rabbit', x + 0.4, h - 4, z + 0.3);
+  spawnMob('rabbit', x - 0.4, h - 4, z); spawnMob(Math.random() < psychoDen ? 'psycho' : 'rabbit', x + 0.4, h - 4, z + 0.3); // now and then one of them is psychotic
 }
 function trySpawnMobs(c) {
   if (net.mode !== 'guest') spawnDenRabbits(c);
@@ -3189,7 +3195,7 @@ function trySpawnMobs(c) {
       let ty = null;
       if (r < 0.12 && countMobs(['platypus']) < 8) ty = 'platypus';
       else if (r < 0.24 && countMobs(['otter']) < 8) ty = 'otter';
-      else if (r < 0.241 && countMobs(['alligator']) < 1) ty = 'alligator'; // very rare
+      else if (r < 0.241 && countMobs(['alligator']) < 1 && !keptAnimals.length) ty = 'alligator'; // very rare (and not while one is kept in a fence)
       if (ty) spawnMob(ty, wx, Math.max(ht, SEA) + 1, wz);
     }
   }
@@ -3387,6 +3393,7 @@ function updateToucan(m, dt) {
     m.rot = m.wrot || 0;
     m.chasing = false;
   }
+  if (m.stun > 0) { m.stun -= dt; vx = 0; vz = 0; } // knocked back for a moment
   vx += m.kx; vz += m.kz;
   m.kx *= Math.max(0, 1 - 6 * dt); m.kz *= Math.max(0, 1 - 6 * dt);
   let climb = 0;
@@ -3402,7 +3409,7 @@ function updateToucan(m, dt) {
 
 // ================= Wolves: taming, pets and fighting =================
 const MEAT = { 103: 1, 104: 1, 105: 1, 106: 1 }; // raw beef, porkchop, mutton and chicken: what wins a wild wolf over
-const FEED = { 103: 4, 104: 4, 105: 4, 106: 4, 112: 3, 125: 8, 126: 8, 127: 8, 128: 8, 129: 6, 154: 3, 155: 6, 156: 4, 157: 8 }; // what a pet can eat, and how much health it gives back
+const FEED = { 158: 8, 103: 4, 104: 4, 105: 4, 106: 4, 112: 3, 125: 8, 126: 8, 127: 8, 128: 8, 129: 6, 154: 3, 155: 6, 156: 4, 157: 8 }; // what a pet can eat, and how much health it gives back
 let petToastAt = 0;
 // an open spot on the ground a few blocks from a position (used to place and call back pets)
 function groundSpotNear(cx, cy, cz) {
@@ -3427,8 +3434,9 @@ function restorePets(list) {
     spawnMob('wolf', sp[0], sp[1], sp[2]);
     const w = mobs[mobs.length - 1];
     w.tamed = true;
-    w.maxHp = 20;
-    w.hp = Math.max(1, Math.min(20, pt.hp || 20));
+    w.pow = Math.max(0, Math.min(10, pt.pow | 0));
+    w.maxHp = 20 + 5 * w.pow;
+    w.hp = Math.max(1, Math.min(w.maxHp, pt.hp || w.maxHp));
     w.wool.forEach(x => { x.visible = true; });
   });
 }
@@ -3453,6 +3461,16 @@ function snackNear(m, r) { // food that you dropped for your pet
 // right-click a wolf with food: a pet eats it and heals, a wild wolf takes raw meat (three pieces make it your pet)
 function feedWolf(m, id) {
   if (m.puppet) { toast('Only the host can feed wolves for now.'); return; }
+  if (id === 158) { // psychotic rabbit meat: your pet gets stronger, and so do you
+    if (!m.tamed) { toast('Wild wolves only take raw meat.'); return; }
+    if ((m.pow || 0) >= 10) { toast('Your wolf cannot get any stronger.'); return; }
+    take(id, 1);
+    m.pow = (m.pow || 0) + 1; m.maxHp = 20 + 5 * m.pow; m.hp = m.maxHp;
+    strength = Math.min(10, strength + 1);
+    spawnHearts(m.x, m.y + 0.9, m.z);
+    toast('You and your wolf feel stronger! (strength ' + m.pow + ' of 10)');
+    return;
+  }
   if (m.tamed) {
     if (m.hp >= m.maxHp) { toast('Your wolf is not hungry.'); return; }
     take(id, 1);
@@ -3516,7 +3534,7 @@ function petAI(m, dt, s, dxp, dzp, dp) {
       m.rot = Math.atan2(tx, tz);
       m.moving = td > 1.3;
       if (petStuck(m, dt, Math.hypot(td, tdy))) { teleportPet(m, tg.x, tg.y, tg.z); return; } // blocked: leap over to it
-      if (td < 1.8 && tdy < 1.8 && m.biteCd <= 0) { m.biteCd = 1; biteMob(m, tg, s.dmg); }
+      if (td < 1.8 && tdy < 1.8 && m.biteCd <= 0) { m.biteCd = 1; biteMob(m, tg, s.dmg + (m.pow || 0)); }
       return;
     }
   }
@@ -3558,7 +3576,7 @@ function wolfAI(m, dt, s) {
       m.chasing = true;
       m.rot = Math.atan2(gx, gz);
       m.moving = gd > 1.2;
-      if (gd < 1.7 && Math.abs(gr.y - m.y) < 1.8 && m.biteCd <= 0) { m.biteCd = 1; biteMob(m, gr, s.dmg); }
+      if (gd < 1.7 && Math.abs(gr.y - m.y) < 1.8 && m.biteCd <= 0) { m.biteCd = 1; biteMob(m, gr, s.dmg + (m.pow || 0)); }
       return;
     }
   }
@@ -3669,12 +3687,15 @@ function updateMob(m, dt) {
   } else m.insideT = 0;
   // wolves: wild ones chase and bite, tamed ones follow you and fight for you
   m.chasing = false;
-  if (s.hostile && !m.leash) wolfAI(m, dt, s); // an animal on a lead behaves
-  if (s.bear && !m.leash) bearAI(m, dt, s);
+  if (m.stun > 0) m.stun -= dt; // just hit: knocked back, it cannot chase or bite for a moment
+  const stunned = m.stun > 0;
+  if (s.hostile && !m.leash && !stunned) wolfAI(m, dt, s); // an animal on a lead behaves
+  if (s.bear && !m.leash && !stunned) bearAI(m, dt, s);
+  if (s.psycho && !m.leash && !stunned) psychoAI(m, dt, s);
   if (s.rabbit) rabbitAI(m, dt, s);
   if (m.leash) leashAI(m, dt);
-  if (s.otter) otterAI(m, dt, s);
-  const spd = m.moving ? s.speed * (m.panic > 0 ? 2.6 : (m.chasing ? (m.tamed ? 4.5 : 3.4) : 1)) : 0;
+  if (s.otter && !stunned) otterAI(m, dt, s);
+  const spd = (m.moving && !stunned) ? s.speed * (m.panic > 0 ? 2.6 : (m.chasing ? (m.tamed ? 4.5 : 3.4) : 1)) : 0;
   const sx = Math.sin(m.rot), sz = Math.cos(m.rot);
   let dx = sx * spd * dt + m.kx * dt, dz = sz * spd * dt + m.kz * dt;
   m.kx *= Math.max(0, 1 - 6 * dt); m.kz *= Math.max(0, 1 - 6 * dt);
@@ -3756,7 +3777,7 @@ function hitMob(m) {
   if (m.dying) return;
   const g = selGear();
   const def = g ? TOOLS[g.id] : null;
-  const dmg = def ? def.dmg : 1;
+  const dmg = (def ? def.dmg : 1) + strength; // psychotic rabbit meat makes you stronger
   if (m.puppet) {
     if (!m.tamed) { netSend({ t: 'hit', id: m.nid, dmg, fx: p.x, fz: p.z }); m.flash = 0.25; }
   } else { damageMob(m, dmg, p.x, p.z, null); if (m.type === 'villager') provokeVillagers(m); }
@@ -3767,7 +3788,9 @@ function damageMob(m, dmg, fx, fz, killer) {
   m.hp -= dmg;
   if (!m.tamed) petsTarget(m); // your pets join any fight
   const ax = m.x - fx, az = m.z - fz, l = Math.hypot(ax, az) || 1;
-  m.kx = ax / l * 6; m.kz = az / l * 6;
+  const tough = m.spec.hostile || m.spec.bear || m.spec.lift || m.spec.otter || m.spec.puffer || m.spec.flying; // these chase you, so they would run straight back in
+  m.kx = ax / l * (tough ? 9 : 6); m.kz = az / l * (tough ? 9 : 6);
+  if (tough && !m.tamed) m.stun = 0.35;
   m.vy = 5; m.onGround = false;
   m.fleeX = fx; m.fleeZ = fz;
   if (m.spec.flying) { m.backoff = 1.2; m.chasing = true; } // a toucan that is hit flutters back for a moment, then comes at you again
@@ -4146,7 +4169,7 @@ function playerAtRay(maxD) {
   return null;
 }
 function hitPlayer(pl) {
-  const g = selGear(), def = g ? TOOLS[g.id] : null, dmg = def ? def.dmg : 1;
+  const g = selGear(), def = g ? TOOLS[g.id] : null, dmg = (def ? def.dmg : 1) + strength;
   if (def) wearSel(1);
   const fx = r2(p.x), fz = r2(p.z);
   if (net.mode === 'host') { if (pl.id !== 'host') netSendTo(pl.id, { t: 'pvpHurt', dmg, fx, fz, from: net.name }); }
@@ -4154,6 +4177,8 @@ function hitPlayer(pl) {
   flashAvatar(pl.id);
 }
 let pvpToastAt = 0;
+let strength = 0;                  // +1 damage for every piece of psychotic rabbit meat you fed your wolf (up to 10)
+let psychoBreed = 0.06, psychoDen = 0.08; // the chances of a psychotic rabbit being born, or being one of a burrow's two
 // another player hit you: armor helps, and you are knocked back a little
 function pvpHurt(dmg, fx, fz, from) {
   if (dead) return;
@@ -4177,7 +4202,7 @@ function hostPvp(q, msg) {
   if (!isFinite(fx + fz)) return;
   const to = String(msg.to);
   const t = to === 'host' ? { x: p.x, z: p.z } : net.players[to];
-  if (!t || Math.hypot(q.x - t.x, q.z - t.z) > 8) return;
+  if (!t || Math.hypot(q.x - t.x, q.z - t.z) > (msg.kind === 'arrow' ? 80 : 8)) return; // arrows fly further than a sword reaches
   q.lastPvp = now;
   if (to === 'host') pvpHurt(dmg, fx, fz, q.name);
   else netSendTo(to, { t: 'pvpHurt', dmg, fx, fz, from: q.name });
@@ -4216,7 +4241,7 @@ function useDown() {
   const id = selId();
   { const lm0 = mobAtRay(r ? Math.min(4, r.t) : 4); // leads: lead an animal, let it go
     if (lm0 && !lm0.dying) {
-      if (lm0.leash) { unleash(lm0); return; }
+      if (lm0.leash && !(lm0.type === 'alligator' && id !== 152)) { unleash(lm0); return; } // (a led alligator can still be talked to: let it go with the lead)
       if (id === 152 && canLeash(lm0)) { leashMob(lm0); return; }
     }
   }
@@ -4860,8 +4885,8 @@ function saveWorld(manual) {
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packWorldEdits(), edits1: lastE1, dim: DIM, portalLinks: portalLinks, saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn, known: knownVillages, cheats: cheatsOn, quest: { idx: quest.idx, taken: quest.taken }, colonies: colonies.concat(penColoniesNow()), dens: Object.keys(denDone),
-    pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp }))
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packWorldEdits(), edits1: lastE1, dim: DIM, portalLinks: portalLinks, saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn, known: knownVillages, cheats: cheatsOn, quest: { idx: quest.idx, taken: quest.taken }, colonies: colonies.concat(penColoniesNow()), dens: Object.keys(denDone), strength, kept: keptAnimals.concat(keptNow()),
+    pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp, pow: m.pow || 0 }))
   };
   if (writeWorld(rec)) {
     const list = loadIndex();
@@ -4890,7 +4915,7 @@ function resetWorldState() {
   shots.length = 0; clearOreMesh(); oreVisionT = 0; liftReady = 0; villageT = 0; villageCache.clear();
   for (const k in knownVillages) delete knownVillages[k];
   quest.idx = 0; quest.taken = false;
-  colonies = []; for (const k in penTimers) delete penTimers[k]; for (const k in denDone) delete denDone[k];
+  colonies = []; strength = 0; keptAnimals = []; for (const k in penTimers) delete penTimers[k]; for (const k in denDone) delete denDone[k];
   DIM = 0; dimStore[0] = null; dimStore[1] = null; portalLinks.over = null; portalLinks.lift = null; portalT = 0; portalCool = 0;
   cheatsOn = false; burnT = 0; burnTick = 0; crawling = false; playerPoison = false; air = AIR_MAX; airHurtT = 0;
   if (sleepState) { scene.remove(sleepState.av.group); sleepState = null; document.getElementById('sleepOverlay').style.opacity = 0; }
@@ -4948,6 +4973,7 @@ function startWorld(rec) {
   Object.assign(knownVillages, rec.known || {});
   cheatsOn = !!rec.cheats && !rec.remote;
   colonies = (rec.colonies || []).slice();
+  strength = Math.max(0, Math.min(10, rec.strength | 0)); keptAnimals = (rec.kept || []).slice();
   for (const k of (rec.dens || [])) denDone[k] = true; // a burrow's rabbits are not born again every time you load the world
   quest.idx = (rec.quest && rec.quest.idx) || 0; quest.taken = !!(rec.quest && rec.quest.taken);
   sp0 = rec.spawn || findSpawn();
@@ -5188,7 +5214,7 @@ function startSleep(info) {
   av.group.rotation.order = 'YXZ';
   av.group.rotation.x = -Math.PI / 2;           // lying on their back...
   av.group.rotation.y = Math.atan2(-dx, -dz);    // ...with the head towards the head of the bed
-  av.group.position.set(info.foot[0] + 0.5 + dx * 0.15, info.by + 0.5625 + 0.16, info.foot[1] + 0.5 + dz * 0.15);
+  av.group.position.set(info.foot[0] + 0.5 - dx * 0.47, info.by + 0.5625 + 0.25, info.foot[1] + 0.5 - dz * 0.47); // feet at the foot of the bed, head on the pillow
   scene.add(av.group);
   sleepState = { t: 0, info, av, applied: false, was: net.mode };
 }
@@ -5232,12 +5258,13 @@ function bedPartner(x, y, z, b) {
 }
 // the bed item is put down as two blocks: the foot where you aim, the head one block further on (the way you face)
 // doors: two blocks tall. Right-click to open, right-click again to close. Closed doors keep animals out.
+function doorFree(b) { return b === 0 || isWat(b) || isPlant(b); } // a door can go where there is air, water or a plant
 function placeDoor(r) {
   const t = r && r.prev;
   if (!t) return;
   const x = t[0], y = t[1], z = t[2];
   if (y < 1 || y + 1 >= HEIGHT) return;
-  if (getBlock(x, y, z) !== 0 || getBlock(x, y + 1, z) !== 0 || !solid(getBlock(x, y - 1, z))) { toast('A door needs two free blocks above solid ground.'); return; }
+  if (!doorFree(getBlock(x, y, z)) || !doorFree(getBlock(x, y + 1, z)) || !solid(getBlock(x, y - 1, z))) { toast('A door needs two free blocks above solid ground.'); return; }
   if (p.x - 0.3 < x + 1 && p.x + 0.3 > x && p.z - 0.3 < z + 1 && p.z + 0.3 > z && p.y < y + 2 && p.y + playerH > y) { toast('Step back first.'); return; }
   setBlock(x, y, z, 60); setBlock(x, y + 1, z, 62);
   take(147, 1);
@@ -5435,13 +5462,32 @@ function releaseBow() {
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   fireArrow(camera.position.x + dir.x * 0.6, camera.position.y + dir.y * 0.6 - 0.1, camera.position.z + dir.z * 0.6, dir.x, dir.y, dir.z, power);
+  if (net.mode !== 'off') netArrow(camera.position.x + dir.x * 0.6, camera.position.y + dir.y * 0.6 - 0.1, camera.position.z + dir.z * 0.6, dir.x, dir.y, dir.z, power);
 }
-function fireArrow(x, y, z, dx, dy, dz, power) {
+// tell the others about an arrow, so they can see it fly
+function netArrow(x, y, z, dx, dy, dz, power) {
+  const m = { t: 'arrow', x: r2(x), y: r2(y), z: r2(z), dx: Math.round(dx * 1000) / 1000, dy: Math.round(dy * 1000) / 1000, dz: Math.round(dz * 1000) / 1000, power: r2(power) };
+  if (net.mode === 'host') netSendAll(m); else netSend(m);
+}
+function visibleArrow(m) {
+  const n = [m.x, m.y, m.z, m.dx, m.dy, m.dz, m.power].map(Number);
+  if (n.some(v => !isFinite(v)) || arrows.length > 60) return null;
+  fireArrow(n[0], n[1], n[2], n[3], n[4], n[5], Math.max(0, Math.min(1, n[6])), true);
+  return n;
+}
+function arrowHitPlayer(id, a) {
+  const dmg = Math.round(3 + 6 * a.power) + Math.floor(strength / 2);
+  const fx = r2(a.x - a.vx * 0.1), fz = r2(a.z - a.vz * 0.1);
+  if (net.mode === 'host') { if (id !== 'host') netSendTo(id, { t: 'pvpHurt', dmg, fx, fz, from: net.name }); }
+  else netSend({ t: 'pvp', to: id, dmg, fx, fz, kind: 'arrow' });
+  flashAvatar(id);
+}
+function fireArrow(x, y, z, dx, dy, dz, power, vis) { // vis: just the picture of a friend's arrow (the one who shot it does the hitting)
   const sp = 10 + 22 * power;
   const mesh = new THREE.Mesh(boxGeo(0.05, 0.05, 0.6), arrowMat);
   mesh.rotation.order = 'YXZ';
   scene.add(mesh);
-  arrows.push({ mesh, x, y, z, vx: dx * sp, vy: dy * sp, vz: dz * sp, age: 0, power });
+  arrows.push({ mesh, x, y, z, vx: dx * sp, vy: dy * sp, vz: dz * sp, age: 0, power, vis: !!vis });
 }
 function arrowHit(m, a) {
   const dmg = Math.round(3 + 6 * a.power);
@@ -5465,9 +5511,19 @@ function updateArrows(dt) {
       a.vy -= 14 * h;
       a.x += a.vx * h; a.y += a.vy * h; a.z += a.vz * h;
       const b = getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z));
-      if (solid(b)) { gone = true; if (Math.random() < 0.5) dropItem(142, a.x - a.vx * 0.02, a.y + 0.2, a.z - a.vz * 0.02, { vy: 1, delay: 0.3 }); break; }
+      if (solid(b)) { gone = true; if (!a.vis && Math.random() < 0.5) dropItem(142, a.x - a.vx * 0.02, a.y + 0.2, a.z - a.vz * 0.02, { vy: 1, delay: 0.3 }); break; }
       if (isLav(b)) { gone = true; break; }
-      for (const m of mobs) {
+      if (!a.vis && net.mode !== 'off') { // another player
+        const view = net.mode === 'host' ? net.players : net.others;
+        for (const id in view) {
+          const st = view[id];
+          if (!st || st.dd) continue;
+          const h = st.cw ? 0.9 : (st.cr ? 1.5 : 1.8);
+          if (Math.abs(a.x - st.x) < 0.45 && Math.abs(a.z - st.z) < 0.45 && a.y >= st.y - 0.1 && a.y <= st.y + h + 0.1) { arrowHitPlayer(id, a); gone = true; break; }
+        }
+        if (gone) break;
+      }
+      for (const m of (a.vis ? [] : mobs)) {
         if (m.dying || m.tamed) continue;
         const rr = m.spec.r + 0.2;
         if (Math.hypot(a.x - m.x, a.z - m.z) < rr && a.y > m.y - 0.15 && a.y < m.y + m.h + 0.15) { arrowHit(m, a); gone = true; break; }
@@ -5597,6 +5653,7 @@ function updateLift(m, dt) {
     m.throwT = (m.throwT === undefined ? 2 : m.throwT) - dt;
     if (m.throwT <= 0 && hd < 24) { m.throwT = 2.6 + Math.random() * 1.2; liftThrow(m, np); }
   } else { m.chasing = false; m.throwT = 2; m.rot += dt * 0.4; }
+  if (m.stun > 0) { m.stun -= dt; vx = 0; vz = 0; } // knocked back for a moment
   vx += m.kx; vz += m.kz;
   m.kx *= Math.max(0, 1 - 6 * dt); m.kz *= Math.max(0, 1 - 6 * dt);
   const nx = m.x + vx * dt, nz = m.z + vz * dt, ny = m.y + vy * dt;
@@ -5812,7 +5869,7 @@ function poisonFx(x, y, z, n) {
   }
 }
 // everything alive near the splash is poisoned: it takes 2 damage a second for 8 seconds
-function poisonArea(x, y, z) {
+function poisonArea(x, y, z, from) { // from: who threw it ('host' = you, or a friend's id)
   for (const m of mobs) {
     if (m.dying || m.tamed || m.puppet) continue;
     if (Math.hypot(m.x - x, (m.y + m.h / 2) - y, m.z - z) < 3.2) {
@@ -5820,12 +5877,18 @@ function poisonArea(x, y, z) {
       if (m.type === 'villager') provokeVillagers(m);
     }
   }
+  if (from !== 'host' && !dead && Math.hypot(p.x - x, (p.y + 0.9) - y, p.z - z) < 3.2) { if (!playerPoison) toast('You were poisoned by venom! Drink milk to cure it.'); playerPoison = true; }
+  if (net.mode === 'host') for (const id in net.players) {
+    if (id === from) continue;
+    const q = net.players[id];
+    if (Math.hypot(q.x - x, (q.y + 0.9) - y, q.z - z) < 3.2) netSendTo(id, { t: 'poisoned' });
+  }
 }
 function splashVenom(x, y, z) {
   if (tryOpenPortal(Math.floor(x), Math.floor(y), Math.floor(z))) { poisonFx(x, y, z, 6); return; } // venom thrown into a lift frame opens the portal
   poisonFx(x, y, z, 10);
   if (net.mode === 'guest') netSend({ t: 'poison', x, y, z });
-  else poisonArea(x, y, z);
+  else poisonArea(x, y, z, 'host');
 }
 function updatePotions(dt) {
   for (let i = potions.length - 1; i >= 0; i--) {
@@ -6097,15 +6160,29 @@ const QUESTS = [
   { text: "Bring me a Lift Man's heart.", id: 140, n: 1, reward: 8 }
 ];
 const quest = { idx: 0, taken: false };
+// what the alligator gives: only now and then emeralds, otherwise a handful of something useful (id, least, most, how likely)
+const GIFTS = [[111, 3, 6, 10], [114, 4, 8, 10], [115, 2, 4, 6], [125, 3, 6, 9], [142, 8, 16, 9], [108, 2, 5, 8], [118, 4, 8, 8], [117, 3, 5, 7], [100, 8, 16, 8],
+  [148, 1, 2, 5], [130, 1, 1, 4], [131, 2, 4, 6], [121, 2, 4, 5], [143, 3, 6, 6], [116, 1, 1, 2]];
+function questGift(q) {
+  if (Math.random() < 0.25) { giveItem(146, q.reward); return 'Here are your ' + q.reward + ' emeralds.'; }
+  let tot = 0;
+  for (const g of GIFTS) tot += g[3];
+  let r = Math.random() * tot, pick = GIFTS[0];
+  for (const g of GIFTS) { r -= g[3]; if (r <= 0) { pick = g; break; } }
+  const n = pick[1] + Math.floor(Math.random() * (pick[2] - pick[1] + 1));
+  giveItem(pick[0], n);
+  return 'Here is ' + n + ' x ' + ITEMS[pick[0]].n + '.';
+}
 function talkAlligator(m) {
   if (m.puppet) { toast('Only the host can talk to the alligator for now.'); return; }
   const q = QUESTS[quest.idx % QUESTS.length];
   const say = (t) => { chatNote('The all-knowing alligator: ' + t); toast('The all-knowing alligator speaks. (See the text at the bottom left.)'); };
-  if (!quest.taken) { quest.taken = true; say('Ah, a visitor. I know everything, and I need one thing. ' + q.text + ' I will pay ' + q.reward + ' emeralds.'); return; }
+  if (!quest.taken) { quest.taken = true; say('Ah, a visitor. I know everything, and I need one thing. ' + q.text + ' I will give you something good for it (maybe even emeralds).'); return; }
   if (count(q.id) >= q.n) {
-    take(q.id, q.n); giveItem(146, q.reward);
+    take(q.id, q.n);
+    const gift = questGift(q);
     quest.taken = false; quest.idx++;
-    say('Wise choice. Here are your ' + q.reward + ' emeralds. Come back for another quest.');
+    say('Wise choice. ' + gift + ' Come back for another quest.');
     return;
   }
   say(q.text + ' You have ' + count(q.id) + ' of ' + q.n + '.');
@@ -6238,8 +6315,15 @@ function checkPortal(dt) {
 // rabbits scatter when you come near
 function rabbitAI(m, dt, s) {
   m.hopT = (m.hopT || 0) - dt;
+  if (m.runT > 0) { m.runT -= dt; m.rot = m.runRot; m.moving = true; m.panic = Math.max(m.panic || 0, 0.3); } // rabbits that broke out run off in one direction: you have to chase them
   const np = nearestPlayer(m.x, m.y, m.z);
   if ((m.moving || m.panic > 0) && m.onGround && m.hopT <= 0) { m.vy = 4.5; m.hopT = 0.3 + Math.random() * 0.25; } // they hop
+}
+// a psychotic rabbit goes for you as soon as you are near
+function psychoAI(m, dt, s) {
+  const np = nearestPlayer(m.x, m.y, m.z);
+  if (np && np.dist < 12 && Math.abs(np.y - m.y) < 5) m.aggro = Math.max(m.aggro, 3);
+  if (m.aggro > 0) { m.aggro -= dt; chaseAndBite(m, dt, s, 24, 3.4, 1.5, s.dmg); }
 }
 function nearFence(x, y, z, r) {
   for (let dx = -r; dx <= r; dx++) for (let dy = -1; dy <= 2; dy++) for (let dz = -r; dz <= r; dz++) if (isFence(getBlock(Math.floor(x) + dx, Math.floor(y) + dy, Math.floor(z) + dz))) return true;
@@ -6278,12 +6362,30 @@ function rabbitPens(dt) {
     if (g.length < 2 || Math.min.apply(null, g.map(m => m.breedT)) < 300) continue;
     const n = g.length, cx = g.reduce((t, m) => t + m.x, 0) / n, cy = g[0].y, cz = g.reduce((t, m) => t + m.z, 0) / n;
     for (const m of g) m.breedT = 0;
-    for (let i = 0; i < n && mobs.length < 200; i++) { const b = spawnMob('rabbit', g[i].x + 0.3, g[i].y, g[i].z + 0.2); b.pen = true; b.breedT = 0; } // five minutes together: twice as many
-    if (n * 2 >= RABBIT_ESCAPE) { if (breakPen(cx, cy, cz) > 0) toast('The rabbits chewed through the fence and escaped!'); for (const m of mobs) if (m.type === 'rabbit' && Math.hypot(m.x - cx, m.z - cz) < 12) m.free = true; }
+    for (let i = 0; i < n && mobs.length < 200; i++) { const b = spawnMob(Math.random() < psychoBreed ? 'psycho' : 'rabbit', g[i].x + 0.3, g[i].y, g[i].z + 0.2); if (b.type === 'rabbit') { b.pen = true; b.breedT = 0; } } // five minutes together: twice as many
+    if (n * 2 >= RABBIT_ESCAPE) { if (breakPen(cx, cy, cz) > 0) toast('The rabbits chewed through the fence and escaped!'); const dir = Math.random() * Math.PI * 2; for (const m of mobs) if (m.type === 'rabbit' && Math.hypot(m.x - cx, m.z - cz) < 12) { m.free = true; m.runRot = dir + (Math.random() - 0.5) * 0.5; m.runT = 25; } } // they all bolt the same way
   }
 }
 // rabbits left in a pen when you walk away are remembered, and have bred by the time you come back
+// an alligator in a fence is still there when you come back
+function keptHook(m) {
+  if (m.dying || !nearFence(m.x, m.y, m.z, 3)) return;
+  if (!keptAnimals.some(k => Math.hypot(k.x - m.x, k.z - m.z) < 3)) keptAnimals.push({ type: 'alligator', x: m.x, y: m.y, z: m.z });
+}
+function keptNow() { // the fenced alligators around you, for saving
+  return mobs.filter(m => m.type === 'alligator' && !m.dying && nearFence(m.x, m.y, m.z, 3)).map(m => ({ type: 'alligator', x: m.x, y: m.y, z: m.z }));
+}
+function keptTick() {
+  if (net.mode === 'guest' || DIM === 1 || !keptAnimals.length) return;
+  for (let i = keptAnimals.length - 1; i >= 0; i--) {
+    const k = keptAnimals[i];
+    if (Math.hypot(k.x - p.x, k.z - p.z) > 60 || !chunks.has(ck(Math.floor(k.x) >> 4, Math.floor(k.z) >> 4))) continue;
+    keptAnimals.splice(i, 1);
+    spawnMob(k.type, k.x, k.y, k.z);
+  }
+}
 function colonyHook(m) {
+  if (m.type === 'alligator') { keptHook(m); return; }
   if (m.type !== 'rabbit' || m.free || m.dying || !nearFence(m.x, m.y, m.z, 3)) return;
   const c = colonies.find(q => Math.hypot(q.x - m.x, q.z - m.z) < 10 && Math.abs(q.y - m.y) < 4);
   if (c) c.n++; else colonies.push({ x: m.x, y: m.y, z: m.z, n: 1, t: worldTime });
@@ -6308,12 +6410,17 @@ function colonyTick(dt) {
     if (n >= 2) for (let k = 0; k < periods && n < 80; k++) n *= 2;
     n = Math.min(80, n);
     const escaped = n >= RABBIT_ESCAPE;
-    for (let k = 0; k < n; k++) { const r = spawnMob('rabbit', c.x + (Math.random() - 0.5) * 3, c.y, c.z + (Math.random() - 0.5) * 3); if (escaped) r.free = true; else r.pen = true; }
+    const runDir = Math.random() * Math.PI * 2;
+    for (let k = 0; k < n; k++) {
+      const r = spawnMob((k >= c.n && Math.random() < psychoBreed) ? 'psycho' : 'rabbit', c.x + (Math.random() - 0.5) * 3, c.y, c.z + (Math.random() - 0.5) * 3);
+      if (r.type !== 'rabbit') continue;
+      if (escaped) { r.free = true; r.runRot = runDir + (Math.random() - 0.5) * 0.5; r.runT = 25; } else r.pen = true;
+    }
     if (escaped && n > c.n && breakPen(c.x, c.y, c.z) > 0) toast('While you were away the rabbits chewed through the fence and escaped!');
     else if (n > c.n) toast('While you were away your rabbits bred: there are ' + n + ' now.');
   }
 }
-const LEASHABLE = { sheep: 1, cow: 1, pig: 1, chicken: 1, rabbit: 1, platypus: 1, otter: 1, wolf: 1, bear: 1 };
+const LEASHABLE = { sheep: 1, cow: 1, pig: 1, chicken: 1, rabbit: 1, platypus: 1, otter: 1, wolf: 1, bear: 1, alligator: 1 };
 function canLeash(m) { return !!LEASHABLE[m.type] || (m.type === 'lift' && DIM === 1); } // Lift Men can only be led in their own dimension
 const ropeMat = new THREE.MeshBasicMaterial({ color: 0xc8a060 });
 function dropRope(m) { if (m.rope) { scene.remove(m.rope); m.rope = null; } }
@@ -6876,10 +6983,10 @@ function netSendTo(id, msg) { const c = net.conns[id]; if (c && c.open) c.send(m
 function netSendAll(msg, exceptId) { for (const id in net.conns) if (id !== exceptId) netSendTo(id, msg); }       // host -> every friend
 
 function playerList() {
-  const out = [{ id: 'host', name: net.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId(), cw: crawling, sw: (leftDown || handSwing > 0) ? 1 : 0 }];
+  const out = [{ id: 'host', name: net.name, x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId(), cw: crawling, sw: (leftDown || handSwing > 0) ? 1 : 0, dd: dead }];
   for (const id in net.players) {
     const q = net.players[id];
-    out.push({ id, name: q.name, x: r2(q.x), y: r2(q.y), z: r2(q.z), yaw: r2(q.yaw), pitch: r2(q.pitch), cr: q.cr, item: q.item, cw: q.cw, sw: q.sw });
+    out.push({ id, name: q.name, x: r2(q.x), y: r2(q.y), z: r2(q.z), yaw: r2(q.yaw), pitch: r2(q.pitch), cr: q.cr, item: q.item, cw: q.cw, sw: q.sw, dd: q.dd });
   }
   return out;
 }
@@ -6902,7 +7009,7 @@ function netTick(dt) {
     if (net.t - net.lastTime > 2) { net.lastTime = net.t; netSendAll({ t: 'time', v: worldTime }); }
   } else if (net.t - net.lastP > 0.1) {
     net.lastP = net.t;
-    netSend({ t: 'p', x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId(), cw: crawling, sw: (leftDown || handSwing > 0) ? 1 : 0 });
+    netSend({ t: 'p', x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId(), cw: crawling, sw: (leftDown || handSwing > 0) ? 1 : 0, dd: dead });
   }
 }
 
@@ -7019,10 +7126,14 @@ function updateAvatars(dt) {
     av.group.rotation.y = (st.yaw || 0) + Math.PI;
     av.group.rotation.x = st.cw ? Math.PI / 2 : 0; // crawling: lying flat on their front
     av.group.scale.y = (st.cr && !st.cw) ? 0.88 : 1;
-    av.label.visible = !st.cw;
+    // a player who died falls over sideways, turns red, and stays down until they respawn
+    av.fall = st.dd ? Math.min(1, (av.fall || 0) + dt * 3) : 0;
+    av.group.rotation.z = av.fall * (Math.PI / 2);
+    if (av.fall > 0) av.group.position.y += 0.28 * av.fall;
+    av.label.visible = !st.cw && !(av.fall > 0.3);
     av.label.rotation.y = yaw - av.group.rotation.y;
     if (av.hitT > 0) av.hitT -= dt;
-    const flashing = av.hitT > 0;
+    const flashing = av.hitT > 0 || av.fall > 0;
     if (flashing !== !!av.flashing) { av.flashing = flashing; av.mats.forEach((m, i) => { if (m.color) m.color.set(flashing ? 0xff6060 : (av.baseCols && av.baseCols[i] !== undefined ? av.baseCols[i] : 0xffffff)); }); }
   }
 }
@@ -7137,7 +7248,7 @@ function hostGot(conn, msg) {
   if (!q) return;
   if (msg.t === 'p') {
     if (isFinite(msg.x + msg.y + msg.z)) { q.x = msg.x; q.y = msg.y; q.z = msg.z; }
-    q.yaw = Number(msg.yaw) || 0; q.pitch = Number(msg.pitch) || 0; q.cr = !!msg.cr; q.item = msg.item | 0; q.cw = !!msg.cw; q.sw = !!msg.sw;
+    q.yaw = Number(msg.yaw) || 0; q.pitch = Number(msg.pitch) || 0; q.cr = !!msg.cr; q.item = msg.item | 0; q.cw = !!msg.cw; q.sw = !!msg.sw; q.dd = !!msg.dd;
   } else if (msg.t === 'bs' && Array.isArray(msg.list)) {
     netApplyBlocks(msg.list);
     netSendAll({ t: 'bs', list: msg.list }, id); // pass it on to the other friends
@@ -7164,8 +7275,9 @@ function hostGot(conn, msg) {
     else netSendTo(id, { t: 'milkNo' });
   } else if (msg.t === 'poison') {
     const x = Number(msg.x), y = Number(msg.y), z = Number(msg.z);
-    if (isFinite(x) && isFinite(y) && isFinite(z) && Math.hypot(x - q.x, z - q.z) < 40) poisonArea(x, y, z);
+    if (isFinite(x) && isFinite(y) && isFinite(z) && Math.hypot(x - q.x, z - q.z) < 40) poisonArea(x, y, z, id);
   } else if (msg.t === 'pvp') hostPvp(q, msg);
+  else if (msg.t === 'arrow') { const n = visibleArrow(msg); if (n) netSendAll({ t: 'arrow', x: n[0], y: n[1], z: n[2], dx: n[3], dy: n[4], dz: n[5], power: n[6] }, id); } // a friend's arrow: show it, and pass it on
   else if (msg.t === 'bye') hostDrop(id);
 }
 function hostDrop(id) {
@@ -7235,6 +7347,7 @@ function guestGot(msg) {
   else if (msg.t === 'milkNo') toast('This cow has no milk right now. Try again in a little while.');
   else if (msg.t === 'skin') { const sk = skinDecode(msg.data); if (sk && typeof msg.id === 'string') net.skins[msg.id.slice(0, 60)] = sk; }
   else if (msg.t === 'hurt') playerBitten(Number(msg.dmg) || 1);
+  else if (msg.t === 'arrow') visibleArrow(msg);
   else if (msg.t === 'pvpHurt') pvpHurt(Math.max(0, Math.min(14, Number(msg.dmg) || 1)), Number(msg.fx) || 0, Number(msg.fz) || 0, String(msg.from || '').slice(0, 14));
   else if (msg.t === 'loot') { for (const id of msg.ids) if (ITEMS[id]) dropItem(id, msg.x, msg.y, msg.z); }
 }
@@ -7419,6 +7532,7 @@ function worldTick(dt) {
   updateFluids(dt);
   rabbitPens(dt);
   colonyTick(dt);
+  keptTick();
   updateRopes();
   villageTick(dt);
   if (net.mode !== 'guest') updateShots(dt);
