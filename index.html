@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Voxel Game</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#87ceeb;font-family:sans-serif}
@@ -141,6 +141,23 @@
   .dbox h1{font-size:52px;margin:0 0 6px;text-shadow:3px 3px 0 rgba(0,0,0,.5)}
   .dsub{margin-bottom:16px;color:#fcc}
   #roomInfo{font-size:16px;color:#9ff;margin-bottom:8px;min-height:6px}
+
+  body.touch{overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+  body.touch input,body.touch textarea{-webkit-user-select:text;user-select:text}
+  body.touch #hotbar{transform:translateX(-50%) scale(.72);transform-origin:bottom center;bottom:4px;max-width:none;flex-wrap:nowrap}
+  #touchUI{position:fixed;inset:0;z-index:30;display:none;pointer-events:none;touch-action:none}
+  #touchUI *{touch-action:none}
+  #tLook{position:absolute;inset:0;pointer-events:auto}
+  .tstick{position:absolute;left:max(20px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.4);pointer-events:auto}
+  .tknob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:rgba(255,255,255,.4);border:2px solid rgba(255,255,255,.65);pointer-events:none}
+  .tbtn{position:absolute;width:56px;height:56px;border-radius:50%;font:700 22px system-ui,sans-serif;color:#fff;border:2px solid rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;pointer-events:auto;opacity:.88}
+  .tbtn small{position:absolute;bottom:-14px;font-size:10px;font-weight:600;white-space:nowrap;color:#fff;text-shadow:1px 1px 2px #000}
+  .tbtn.on{filter:brightness(1.7);transform:scale(.93)}
+  .tsm{position:absolute;top:max(10px,env(safe-area-inset-top));width:42px;height:42px;border-radius:11px;background:rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.5);color:#fff;font-size:19px;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+  #tClose{display:none;position:fixed;z-index:70;top:max(10px,env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));width:50px;height:50px;border-radius:12px;background:rgba(160,30,30,.9);border:2px solid #fff;color:#fff;font:700 24px system-ui,sans-serif;align-items:center;justify-content:center}
+  #rotateHint{display:none;position:fixed;top:0;left:0;right:0;z-index:80;background:rgba(0,0,0,.8);color:#fff;text-align:center;padding:8px;font:14px system-ui,sans-serif;pointer-events:none}
+  @media (orientation:portrait){body.touch #rotateHint{display:block}}
+  body.usingpad #touchUI{display:none !important}
 </style>
 </head>
 <body>
@@ -248,7 +265,9 @@ window.addEventListener('error', function (e) {
 });
 
 // ================= Settings =================
-const CH = 16, HEIGHT = 64, SEA = 22, RENDER = 5;
+let TOUCH = false; // true on phones and tablets (add ?touch=1 to the address to try the touch controls on a computer)
+try { TOUCH = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || (typeof location !== 'undefined' && /[?&]touch=1/.test(location.search || '')); } catch (e) {}
+const CH = 16, HEIGHT = 64, SEA = 22, RENDER = TOUCH ? 4 : 5; // phones draw one chunk less far, so they keep up
 let SEED = 1337; // every saved world gets its own random seed
 const DAY_LENGTH = 600; // seconds for one full day and night
 const WATER = 5; // a water source block. Flowing water is 40-46 (46 = full strength), lava is 36 (source) and 37-39 (flowing)
@@ -2479,6 +2498,8 @@ let crouching = false, crawling = false, sprinting = false, playerH = 1.8, eyeH 
 const keys = {};
 // controller state, filled in by pollPad()
 const pad = { mx: 0, my: 0, jump: false, crouch: false, sprint: false, playing: false, connected: false };
+const tch = { mx: 0, my: 0, jump: false, crouch: false, sprint: false }; // what the on-screen joystick and buttons say
+let touchMode = false;
 
 // is there floor under this spot? (used so crouching keeps you from walking off edges)
 // where you land on the blocks at this level (a bed is lower than a full block)
@@ -2500,7 +2521,7 @@ function update(dt) {
   const feetW = isWat(feetBlk) || feetL; // lava is swum through like water, but it burns
 
   // crouch with the Down arrow; you stay crouched while there's no room to stand up
-  const wantCrouch = (!!keys.ArrowDown || pad.crouch) && !feetW;
+  const wantCrouch = (!!keys.ArrowDown || pad.crouch || tch.crouch) && !feetW;
   if (wantCrouch) crouching = true;
   else if (crouching && !boxCollides(p.x, p.y, p.z, 0.3, 1.8)) crouching = false;
   // crouched, you can squeeze into a gap one block high (crawling)
@@ -2509,17 +2530,17 @@ function update(dt) {
   playerH = crouching ? (crawling ? 0.9 : 1.5) : 1.8;
 
   const headOut = !isFluid(getBlock(Math.floor(p.x), Math.floor(p.y + 1.6), Math.floor(p.z)));
-  const fwd = Math.max(-1, Math.min(1, (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) + pad.my));
-  const strafe = Math.max(-1, Math.min(1, (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + pad.mx));
+  const fwd = Math.max(-1, Math.min(1, (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) + pad.my + tch.my));
+  const strafe = Math.max(-1, Math.min(1, (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + pad.mx + tch.mx));
   moving = fwd !== 0 || strafe !== 0;
   // hold Shift (or click the left stick) while moving forward to sprint (walking or swimming)
-  sprinting = !!(keys.ShiftLeft || keys.ShiftRight || pad.sprint) && fwd > 0.3 && !crouching;
+  sprinting = !!(keys.ShiftLeft || keys.ShiftRight || pad.sprint || tch.sprint) && fwd > 0.3 && !crouching;
   const len = Math.hypot(fwd, strafe) || 1;
   const mag = Math.min(1, len);
   const speed = (feetW ? (sprinting ? 4.4 : 2.8) : (crouching ? (crawling ? 1.2 : 1.6) : (sprinting ? 7.5 : 5))) * (feetL ? 0.6 : 1);
   const vx = (-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe) / len * speed * mag;
   const vz = (-Math.cos(yaw) * fwd - Math.sin(yaw) * strafe) / len * speed * mag;
-  const jumpHeld = !!keys.Space || pad.jump;
+  const jumpHeld = !!keys.Space || pad.jump || tch.jump;
 
   const guard = crouching && onGround;
   let bx = false, bz = false;
@@ -4212,6 +4233,167 @@ document.addEventListener('mousemove', (e) => {
   pitch = Math.max(-1.55, Math.min(1.55, pitch));
 });
 
+// ================= Touch screen (phones and tablets) =================
+// Left: a joystick to walk. Right: A (jump), B (sneak), X (mine / hit), Y (use / place), like a game controller.
+// Drag anywhere else to look around. Tap the hotbar to pick a slot.
+let touchFsTried = false, touchUIEl = null, tCloseEl = null;
+const touchBtnEls = {};
+function enterTouchPlay() {
+  touchMode = true; pad.playing = true;
+  startEl.style.display = 'none';
+  document.body.classList.remove('usingpad');
+  if (!touchFsTried) { // the first tap also goes full screen and sideways where the browser allows it
+    touchFsTried = true;
+    try {
+      const el = document.documentElement;
+      if (el.requestFullscreen && !document.fullscreenElement) { const r = el.requestFullscreen(); if (r && r.catch) r.catch(() => {}); }
+      if (screen.orientation && screen.orientation.lock) { const r2 = screen.orientation.lock('landscape'); if (r2 && r2.catch) r2.catch(() => {}); }
+    } catch (e) {}
+  }
+  updateTouchUI();
+}
+function touchReleaseAll() {
+  tch.mx = 0; tch.my = 0; tch.jump = false; tch.crouch = false; tch.sprint = false;
+  attackUp(); useUp();
+  for (const k in touchBtnEls) touchBtnEls[k].classList.remove('on');
+}
+function touchPause() {
+  if (!touchMode) return;
+  touchReleaseAll();
+  pad.playing = false; touchMode = false;
+  startTitle.textContent = 'Paused. Tap to continue';
+  updateRoomInfo();
+  startEl.style.display = 'flex';
+  saveWorld(false);
+  updateTouchUI();
+}
+function touchStick(vx, vy) { // the joystick: -1 to 1 each way (screen y points down)
+  const len = Math.hypot(vx, vy);
+  if (len < 0.12) { tch.mx = 0; tch.my = 0; tch.sprint = false; return; }
+  const k = Math.min(1, (len - 0.12) / 0.88) / len;
+  tch.mx = vx * k; tch.my = -vy * k;
+  tch.sprint = len > 0.92 && tch.my > 0.5; // push it all the way forward to run
+}
+function touchLook(dx, dy) {
+  if (!touchMode || !active()) return;
+  yaw -= dx * 0.0045;
+  pitch -= dy * 0.0045;
+  pitch = Math.max(-1.55, Math.min(1.55, pitch));
+}
+function touchButton(name, down) {
+  if (!touchMode) return;
+  if (name === 'A') tch.jump = down;
+  else if (name === 'B') { if (down) tch.crouch = !tch.crouch; }
+  else if (name === 'X') { if (down) attackDown(); else attackUp(); }
+  else if (name === 'Y') { if (down) useDown(); else useUp(); }
+}
+function touchSelect(i) { if (i >= 0 && i < HOTBAR) { sel = i; refreshUI(); } }
+function touchAction(name) {
+  if (!touchMode) return;
+  if (name === 'pause') touchPause();
+  else if (name === 'inv') { if (active() && !panelOpen) openPanel('inv'); }
+  else if (name === 'chat') { if (active() && !panelOpen) openChat(); }
+  else if (name === 'map') {
+    if (!active() || panelOpen) return;
+    if (invSlots.some(s => s && s.id === 144)) openMap(); else toast('You need a map. Craft one from 4 paper.');
+  }
+  else if (name === 'drop') { if (active()) dropSlot(sel); }
+  else if (name === 'close') {
+    if (panelOpen) closePanel(true);
+    else if (mapOpen) closeMap(true);
+    else if (chatOpen) closeChat(true);
+  }
+}
+function updateTouchUI() {
+  if (touchMode && !pad.playing) touchMode = false; // a controller's Start button paused the game
+  if (!touchUIEl) return;
+  const show = touchMode && inGame && !dead && !panelOpen && !mapOpen && !chatOpen && !sleepState;
+  touchUIEl.style.display = show ? 'block' : 'none';
+  tCloseEl.style.display = (touchMode && inGame && !dead && (panelOpen || mapOpen || chatOpen)) ? 'flex' : 'none';
+  if (!show) { tch.mx = 0; tch.my = 0; tch.sprint = false; tch.jump = false; }
+  if (touchBtnEls.B) { if (tch.crouch) touchBtnEls.B.classList.add('on'); else touchBtnEls.B.classList.remove('on'); }
+}
+function touchEl(cls, text, parent) {
+  const e = document.createElement('div');
+  e.className = cls;
+  if (text) e.textContent = text;
+  parent.appendChild(e);
+  return e;
+}
+function buildTouchUI() {
+  if (touchUIEl) return;
+  document.body.classList.add('touch');
+  const root = touchUIEl = document.createElement('div');
+  root.id = 'touchUI';
+  document.body.appendChild(root);
+  // looking: drag a finger anywhere that is not a button (a tap on the hotbar picks a slot)
+  const look = touchEl('', '', root);
+  look.id = 'tLook';
+  let lp = null;
+  look.addEventListener('pointerdown', (e) => {
+    const hb = hotbarEl.getBoundingClientRect();
+    if (e.clientX >= hb.left && e.clientX <= hb.right && e.clientY >= hb.top && e.clientY <= hb.bottom) { touchSelect(Math.floor((e.clientX - hb.left) / (hb.width / HOTBAR))); e.preventDefault(); return; }
+    if (lp === null) { lp = { id: e.pointerId, x: e.clientX, y: e.clientY }; try { look.setPointerCapture(e.pointerId); } catch (x) {} }
+    e.preventDefault();
+  });
+  look.addEventListener('pointermove', (e) => {
+    if (lp && lp.id === e.pointerId) { touchLook(e.clientX - lp.x, e.clientY - lp.y); lp.x = e.clientX; lp.y = e.clientY; }
+    e.preventDefault();
+  });
+  const endLook = (e) => { if (lp && lp.id === e.pointerId) lp = null; };
+  look.addEventListener('pointerup', endLook); look.addEventListener('pointercancel', endLook);
+  // the joystick
+  const stick = touchEl('tstick', '', root), knob = touchEl('tknob', '', stick);
+  let sp = null;
+  const moveStick = (e) => {
+    const r = stick.getBoundingClientRect(), R = r.width / 2, lim = R * 0.9;
+    let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R);
+    const len = Math.hypot(dx, dy);
+    if (len > lim) { dx *= lim / len; dy *= lim / len; }
+    knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+    touchStick(dx / lim, dy / lim);
+  };
+  stick.addEventListener('pointerdown', (e) => { sp = e.pointerId; try { stick.setPointerCapture(e.pointerId); } catch (x) {} moveStick(e); e.preventDefault(); });
+  stick.addEventListener('pointermove', (e) => { if (sp === e.pointerId) moveStick(e); e.preventDefault(); });
+  const endStick = (e) => { if (sp === e.pointerId) { sp = null; knob.style.transform = ''; touchStick(0, 0); } };
+  stick.addEventListener('pointerup', endStick); stick.addEventListener('pointercancel', endStick);
+  // A B X Y
+  const defs = [['A', 'Jump', '#3ca33c', 70, 16], ['B', 'Sneak', '#d03a3a', 14, 70], ['X', 'Mine', '#3a6fd0', 126, 70], ['Y', 'Use', '#d0b030', 70, 124]];
+  for (const d of defs) {
+    const b = touchEl('tbtn', d[0], root);
+    b.style.background = d[2]; b.style.right = d[3] + 'px'; b.style.bottom = d[4] + 'px';
+    if (d[0] === 'Y') b.style.color = '#222';
+    const sm = document.createElement('small'); sm.textContent = d[1]; b.appendChild(sm);
+    b.addEventListener('pointerdown', (e) => {
+      try { b.setPointerCapture(e.pointerId); } catch (x) {}
+      touchButton(d[0], true);
+      if (d[0] !== 'B') b.classList.add('on');
+      e.preventDefault();
+    });
+    const up = (e) => { if (d[0] !== 'B') { b.classList.remove('on'); touchButton(d[0], false); } e.preventDefault(); };
+    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+    touchBtnEls[d[0]] = b;
+  }
+  // small buttons along the top right
+  const small = [['\u2630', 'pause'], ['\uD83C\uDF92', 'inv'], ['\uD83D\uDCAC', 'chat'], ['\uD83D\uDDFA', 'map'], ['\u2913', 'drop']];
+  small.forEach((s, i) => {
+    const b = touchEl('tsm', s[0], root);
+    b.style.right = (10 + i * 50) + 'px';
+    b.addEventListener('pointerdown', (e) => { touchAction(s[1]); e.preventDefault(); });
+  });
+  // a big close button for the inventory, the map and the chat
+  tCloseEl = touchEl('', '\u2715', document.body);
+  tCloseEl.id = 'tClose';
+  tCloseEl.addEventListener('pointerdown', (e) => { touchAction('close'); e.preventDefault(); });
+  const hint = touchEl('', 'Turn your phone sideways to play', document.body);
+  hint.id = 'rotateHint';
+  // touching the screen again brings the buttons back after using a controller
+  document.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') document.body.classList.remove('usingpad'); }, true);
+  setInterval(updateTouchUI, 150);
+  updateTouchUI();
+}
+if (TOUCH) buildTouchUI();
+
 // ================= Xbox / game controller =================
 function dz(v) { const a = Math.abs(v); return a < 0.18 ? 0 : Math.sign(v) * (a - 0.18) / 0.82; }
 let padBlocked = false;
@@ -4286,7 +4468,7 @@ function pollPad(dt) {
   padWas = !!gp;
   if (!gp) {
     pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false; pad.sprint = false;
-    if (pad.playing) {
+    if (pad.playing && !touchMode) {
       pad.playing = false; attackUp();
       document.body.style.cursor = '';
       if (inGame && !locked() && !panelOpen) startEl.style.display = 'flex';
@@ -4299,6 +4481,7 @@ function pollPad(dt) {
   const pressed = i => cur[i] && !padPrev[i];
   const released = i => !cur[i] && padPrev[i];
   const ax = i => dz(gp.axes[i] || 0);
+  if (TOUCH && (cur.some(Boolean) || [0, 1, 2, 3].some(i => Math.abs(gp.axes[i] || 0) > 0.4))) document.body.classList.add('usingpad');
 
   if (mapOpen) { // looking at the map: A zooms, B / Y / Start closes
     pad.mx = 0; pad.my = 0; pad.jump = false; pad.crouch = false; pad.sprint = false;
@@ -4525,6 +4708,7 @@ const startTitle = document.getElementById('startTitle');
 const deathEl = document.getElementById('death');
 
 function lockPointer() {
+  if (TOUCH) { enterTouchPlay(); return; }
   try {
     const r = renderer.domElement.requestPointerLock();
     if (r && r.catch) r.catch(() => {});
@@ -6171,7 +6355,7 @@ function sendChat() {
   else chatNote('You are not in a multiplayer game. Type "cheats" to turn on cheat commands.');
 }
 chatInputEl.addEventListener('keydown', (e) => {
-  if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); sendChat(); closeChat(true); }
+  if ((e.code === 'Enter' || e.key === 'Enter') || e.code === 'NumpadEnter') { e.preventDefault(); sendChat(); closeChat(true); }
   else if (e.code === 'Escape') { e.preventDefault(); closeChat(true); }
   e.stopPropagation();
 });
