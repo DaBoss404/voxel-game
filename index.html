@@ -259,7 +259,9 @@
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
 <script>
 // If something goes wrong, show the error on screen instead of failing silently
-window.addEventListener('error', function (e) {
+var GAME_BUILD = 26;
+window.__framed = false; // set once the game has drawn its first frame
+function showGameError(text) {
   var d = document.getElementById('errBox');
   if (!d && document.body) {
     d = document.createElement('div'); d.id = 'errBox';
@@ -267,12 +269,21 @@ window.addEventListener('error', function (e) {
     d.onclick = function () { d.style.display = 'none'; };
     document.body.appendChild(d);
   }
-  if (d) {
-    var nl = String.fromCharCode(10), st = (e.error && e.error.stack) ? String(e.error.stack).split(nl).slice(0, 4).join(' | ') : '';
-    var where = e.filename ? ' in ' + String(e.filename).split('/').pop() : '';
-    d.style.display = 'block';
-    d.textContent = 'Game error: ' + e.message + ' (line ' + e.lineno + where + '). ' + (st ? st + ' ' : '') + (typeof THREE === 'undefined' ? 'The 3D library did not load: check your internet and reload. ' : '') + 'Tap here to hide this.';
+  if (d) { d.style.display = 'block'; d.textContent = text + ' [build ' + GAME_BUILD + ', 3D library: ' + (typeof THREE) + ', multiplayer library: ' + (typeof Peer) + ', game running: ' + window.__framed + ']. Tap here to hide this.'; }
+}
+window.addEventListener('error', function (e) {
+  if (/WebGL/i.test(String(e.message))) { // the browser would not give the game a 3D surface
+    showGameError('Your browser could not start 3D graphics (WebGL). Try: close all other tabs and apps, restart the browser (or the phone), open the game in Chrome or Safari itself (not inside another app), and make sure hardware acceleration is on in the browser settings.');
+    return;
   }
+  // an error the browser will not describe (from another website's script, an extension...) is only worth showing if the game never starts
+  if (e.message === 'Script error.' && !e.lineno && !e.filename) {
+    setTimeout(function () { if (!window.__framed) showGameError('Something stopped the game from starting (Script error).'); }, 5000);
+    return;
+  }
+  var nl = String.fromCharCode(10), st = (e.error && e.error.stack) ? String(e.error.stack).split(nl).slice(0, 4).join(' | ') : '';
+  var where = e.filename ? ' in ' + String(e.filename).split('/').pop() : '';
+  showGameError('Game error: ' + e.message + ' (line ' + e.lineno + where + ') ' + st);
 });
 
 // ================= Settings =================
@@ -793,7 +804,15 @@ scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, RENDER * CH * 0.45, RENDER * CH * 0.92);
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 400);
 camera.rotation.order = 'YXZ';
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// some phones refuse to make a smooth (antialiased) 3D surface when memory is short: try gentler settings before giving up
+function makeRenderer() {
+  let err = null;
+  for (const o of [{ antialias: true }, { antialias: false }, { antialias: false, powerPreference: 'low-power' }]) {
+    try { return new THREE.WebGLRenderer(o); } catch (e) { err = e; }
+  }
+  throw err;
+}
+const renderer = makeRenderer();
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 addEventListener('resize', () => {
@@ -3930,9 +3949,8 @@ function updateMob(m, dt) {
   tickFlash(m, dt);
 }
 // loot goes to whoever earned it (a friend gets theirs sent over, otherwise it drops here)
-function giveLoot(who, ids, x, y, z) {
-  if (net.mode === 'host' && who && net.players[who]) netSendTo(who, { t: 'loot', ids, x, y, z });
-  else for (const id of ids) dropItem(id, x, y, z);
+function giveLoot(who, ids, x, y, z) { // loot lies on the ground for everybody to pick up
+  for (const id of ids) dropItem(id, x, y, z);
 }
 function startDeath(m) {
   m.dying = true; m.dyingT = 0; m.flash = 0;
@@ -4038,18 +4056,96 @@ function itemMat(id) {
   dropMats[id] = mat;
   return mat;
 }
+// ================= Dropped items (shared on a friend's world) =================
+// Alone, every drop is just yours. With friends, the HOST keeps the list of dropped items and tells everybody, so everyone sees the same
+// items and anybody can pick them up (a friend's drops are made by the host too). Whoever asks first gets it.
+let nextNid = 1;
+function cleanDrop(m, q) { // checks a drop somebody sent us and returns a safe version of it (or null)
+  const id = m.id | 0;
+  if (!ITEMS[id]) return null;
+  const num = (v, lo, hi, dflt) => { v = Number(v); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : dflt; };
+  const o = { id, x: Number(m.x), y: Number(m.y), z: Number(m.z), vx: num(m.vx, -12, 12, 0), vy: num(m.vy, -15, 15, 2), vz: num(m.vz, -12, 12, 0),
+    n: Math.max(1, Math.min(64, (m.n | 0) || 1)), delay: num(m.delay, 0, 4, 0.6), life: num(m.life, 5, 300, 90), byPlayer: !!m.byPlayer, g: null };
+  if (!isFinite(o.x + o.y + o.z)) return null;
+  if (q && Math.hypot(o.x - q.x, o.z - q.z) > 16) return null; // a friend can only drop things near themselves
+  if (isGear(id)) { const g = m.g || {}; o.g = { uid: uidN++, id, dur: num(g.dur, 0, maxDur(id), maxDur(id)), up: g.up ? 1 : 0 }; o.n = 1; }
+  return o;
+}
+function makeDrop(o, nid) {
+  if (drops.length > 250) removeDrop(0);
+  const mesh = new THREE.Mesh(dropPlane, itemMat(o.id));
+  mesh.position.set(o.x, o.y, o.z);
+  scene.add(mesh);
+  const d = { id: o.id, mesh, x: o.x, y: o.y, z: o.z, age: 0, delay: o.delay, g: o.g || null, n: o.n || 1, life: o.life, byPlayer: !!o.byPlayer, vy: o.vy, vx: o.vx, vz: o.vz };
+  if (nid !== undefined) d.nid = nid;
+  drops.push(d);
+  return d;
+}
+function dropMsg(d) { // a drop as a message (what is left of its delay and life)
+  return { nid: d.nid, id: d.id, x: r2(d.x), y: r2(d.y), z: r2(d.z), vx: r2(d.vx), vy: r2(d.vy), vz: r2(d.vz), n: d.n, g: d.g ? { id: d.g.id, dur: d.g.dur, up: d.g.up || 0 } : null, delay: r2(Math.max(0, d.delay - d.age)), life: r2(Math.max(5, (d.life || 90) - d.age)), byPlayer: !!d.byPlayer };
+}
 function dropItem(id, x, y, z, o) {
   o = o || {};
-  if (drops.length > 250) removeDrop(0);
-  const mesh = new THREE.Mesh(dropPlane, itemMat(id));
-  mesh.position.set(x, y, z);
-  scene.add(mesh);
-  drops.push({
-    id, mesh, x, y, z, age: 0, delay: o.delay || 0.6, g: o.g || null, n: o.n || 1, life: o.life || 90, byPlayer: !!o.byPlayer,
+  const spec = { id, x, y, z, g: o.g || null, n: o.n || 1, delay: o.delay || 0.6, life: o.life || 90, byPlayer: !!o.byPlayer,
     vy: o.vy !== undefined ? o.vy : 4 + Math.random() * 2,
     vx: o.vx !== undefined ? o.vx : (Math.random() - 0.5) * 2.5,
-    vz: o.vz !== undefined ? o.vz : (Math.random() - 0.5) * 2.5
-  });
+    vz: o.vz !== undefined ? o.vz : (Math.random() - 0.5) * 2.5 };
+  if (net.mode === 'guest' && net.hostConn && net.hostConn.open) { // a friend's drops are made by the host, so everybody sees them
+    netSend({ t: 'dnew', id, x: r2(x), y: r2(y), z: r2(z), vx: r2(spec.vx), vy: r2(spec.vy), vz: r2(spec.vz), n: spec.n, g: spec.g ? { id: spec.g.id, dur: spec.g.dur, up: spec.g.up || 0 } : null, delay: spec.delay, life: spec.life, byPlayer: spec.byPlayer });
+    return;
+  }
+  const d = makeDrop(spec, net.mode === 'host' ? nextNid++ : undefined);
+  if (net.mode === 'host') netSendAll(Object.assign({ t: 'dspawn' }, dropMsg(d)));
+}
+// host: a friend dropped something (a block they broke, an item they threw)
+function hostDropNew(q, id, msg) {
+  const now = performance.now();
+  q.dropTokens = Math.min(60, (q.dropTokens === undefined ? 60 : q.dropTokens) + (now - (q.dropT || now)) / 1000 * 30); q.dropT = now; // not too many at once
+  if (q.dropTokens < 1) return;
+  const o = cleanDrop(msg, q);
+  if (!o) return;
+  q.dropTokens -= 1;
+  const d = makeDrop(o, nextNid++);
+  netSendAll(Object.assign({ t: 'dspawn' }, dropMsg(d)));
+}
+// host: a friend wants to pick an item up
+function hostDropPick(q, id, msg) {
+  const i = drops.findIndex(d => d.nid === (msg.nid | 0));
+  if (i < 0) return; // somebody got it first
+  const d = drops[i];
+  if (d.age < d.delay - 0.3 || Math.hypot(d.x - q.x, d.z - q.z) > 5 || Math.abs(d.y - (q.y + 0.9)) > 5) return;
+  netSendTo(id, { t: 'dgrant', nid: d.nid, id: d.id, n: d.n, g: d.g ? { id: d.g.id, dur: d.g.dur, up: d.g.up || 0 } : null });
+  removeDrop(i); // (this tells everybody it is gone)
+}
+function guestDropSpawn(m) {
+  if (!inGame || !m || drops.some(d => d.nid === (m.nid | 0))) return;
+  const o = cleanDrop(m, null);
+  if (o) makeDrop(o, m.nid | 0);
+}
+function guestDropGone(nid) { const i = drops.findIndex(d => d.nid === (nid | 0)); if (i >= 0) removeDrop(i); }
+function guestDropIds(ids) { // the host's list of drops: anything else is gone
+  const set = new Set((ids || []).map(Number));
+  for (let i = drops.length - 1; i >= 0; i--) { const d = drops[i]; if (d.nid !== undefined && !set.has(d.nid) && d.age > 2) removeDrop(i); }
+}
+function guestDropGrant(m) { // the host says: this one is yours
+  const id = m.id | 0;
+  if (!ITEMS[id]) return;
+  if (isGear(id)) {
+    const g = m.g || {};
+    if (!addGearObj({ uid: uidN++, id, dur: Math.max(0, Math.min(maxDur(id), Number(g.dur) || maxDur(id))), up: g.up ? 1 : 0 })) dropItem(id, p.x, p.y + 0.8, p.z, { g: { uid: uidN++, id, dur: g.dur, up: g.up }, delay: 1.5 });
+    else toast('+1 ' + ITEMS[id].n);
+    return;
+  }
+  const want = Math.max(1, Math.min(64, m.n | 0)), left = add(id, want);
+  toast('+' + (want - left) + ' ' + ITEMS[id].n);
+  if (left > 0) dropItem(id, p.x, p.y + 0.8, p.z, { n: left, delay: 1.5 }); // no room for all of it: put the rest back
+}
+function requestPickup(d) { // a friend walks over a shared item: ask the host for it
+  const now = performance.now();
+  if (d.pend && now - d.pend < 1500) return;
+  if (d.g ? invSlots.indexOf(null) < 0 : roomFor(d.id) < 1) { if (now - fullToastAt > 1500) { fullToastAt = now; toast('Inventory full.'); } return; }
+  d.pend = now;
+  netSend({ t: 'dpick', nid: d.nid });
 }
 // throw the item in the given slot (one at a time, or a whole tool)
 function dropSlot(i) {
@@ -4074,19 +4170,21 @@ function removeDrop(i) {
   const d = drops[i];
   scene.remove(d.mesh);
   drops.splice(i, 1);
+  if (net.mode === 'host' && d.nid !== undefined) netSendAll({ t: 'dgone', nid: d.nid }); // tell everybody it is gone
 }
 function updateDrops(dt) {
   for (let i = drops.length - 1; i >= 0; i--) {
     const d = drops[i];
     d.age += dt;
-    if (d.age > (d.life || 90)) { removeDrop(i); continue; }
+    const guestShared = net.mode === 'guest' && d.nid !== undefined; // (the host decides when a shared item is gone)
+    if (d.age > (d.life || 90) && !guestShared) { removeDrop(i); continue; }
     const nx = d.x + d.vx * dt;
     if (!solid(getBlock(Math.floor(nx), Math.floor(d.y), Math.floor(d.z)))) d.x = nx; else d.vx = 0;
     const nz = d.z + d.vz * dt;
     if (!solid(getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(nz)))) d.z = nz; else d.vz = 0;
     d.vx *= Math.max(0, 1 - 3 * dt); d.vz *= Math.max(0, 1 - 3 * dt);
     const dBlk = getBlock(Math.floor(d.x), Math.floor(d.y), Math.floor(d.z));
-    if (isLav(dBlk)) { removeDrop(i); continue; } // dropped items burn up in lava
+    if (isLav(dBlk) && !guestShared) { removeDrop(i); continue; } // dropped items burn up in lava
     const inW = isWat(dBlk);
     if (inW) {
       d.vy -= 4 * dt;
@@ -4106,13 +4204,14 @@ function updateDrops(dt) {
     d.mesh.position.set(d.x, d.y + bob, d.z);
     d.mesh.rotation.y = d.age * 2;
     if (d.age > d.delay && Math.hypot(d.x - p.x, d.z - p.z) < 1.7 && Math.abs(d.y - (p.y + 0.9)) < 1.7) {
-      if (d.g) {
+      if (guestShared) requestPickup(d);
+      else if (d.g) {
         if (addGearObj(d.g)) { toast('+1 ' + ITEMS[d.id].n); removeDrop(i); }
         else if (performance.now() - fullToastAt > 1500) { fullToastAt = performance.now(); toast('Inventory full.'); }
       } else if (roomFor(d.id) >= 1) {
         const want = d.n || 1, left = add(d.id, want);
         toast('+' + (want - left) + ' ' + ITEMS[d.id].n);
-        if (left > 0) d.n = left; else removeDrop(i);
+        if (left > 0) { d.n = left; if (d.nid !== undefined && net.mode === 'host') netSendAll({ t: 'dn', nid: d.nid, n: left }); } else removeDrop(i);
       } else if (performance.now() - fullToastAt > 1500) {
         fullToastAt = performance.now();
         toast('Inventory full.');
@@ -4293,7 +4392,8 @@ crack.visible = false;
 scene.add(crack);
 
 let leftDown = false, attackedPress = false, mining = null, atkCd = 0;
-function updateMining(dt) {
+function updateMining(dt) { updateMiningCore(dt); syncMining(dt); }
+function updateMiningCore(dt) {
   atkCd = Math.max(0, atkCd - dt);
   if (!leftDown || !active() || attackedPress || panelOpen) { mining = null; crack.visible = false; return; }
   const r = raycastBlocks(6);
@@ -4307,6 +4407,7 @@ function updateMining(dt) {
   const fast = def && info.tool && def.type === info.tool;
   const time = info.h / (fast ? def.mult : 1);
   mining.t += dt;
+  mining.p = Math.min(1, mining.t / time);
   if (mining.t >= time) {
     breakBlock(r);
     mining = null;
@@ -4318,6 +4419,49 @@ function updateMining(dt) {
   }
 }
 
+// what you are breaking is shown to your friends: the cracks grow on the block as you mine it
+function netBroadcastMine(m) { m.t = 'mine'; if (net.mode === 'host') { m.id = 'host'; netSendAll(m); } else netSend(m); }
+function syncMining(dt) {
+  if (net.mode === 'off') return;
+  net.mineT = (net.mineT || 0) + dt;
+  if (mining) {
+    if (net.mineT > 0.12) { net.mineT = 0; net.mining = true; netBroadcastMine({ x: mining.x, y: mining.y, z: mining.z, p: r2(mining.p || 0) }); }
+  } else if (net.mining) { net.mining = false; netBroadcastMine({ p: -1 }); }
+}
+const remoteCracks = {};
+function remoteMine(m) { // a friend is breaking a block (or has stopped)
+  if (!m || typeof m.id !== 'string') return;
+  const id = m.id.slice(0, 60), prog = Number(m.p);
+  let c = remoteCracks[id];
+  if (!isFinite(prog) || prog < 0) { if (c) { c.mesh.visible = false; c.t = 0; } return; }
+  const x = Number(m.x), y = Number(m.y), z = Number(m.z);
+  if (!isFinite(x + y + z)) return;
+  if (!c) {
+    const tex = typeof crackTex.clone === 'function' ? crackTex.clone() : crackTex; // each friend's cracks have their own stage
+    if (tex !== crackTex) { tex.needsUpdate = true; tex.repeat.set(0.1, 1); }
+    const mesh = new THREE.Mesh(crack.geometry, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    mesh.visible = false; scene.add(mesh);
+    c = remoteCracks[id] = { mesh, tex, t: 0, x: 0, y: 0, z: 0 };
+  }
+  c.x = Math.floor(x); c.y = Math.floor(y); c.z = Math.floor(z);
+  c.mesh.position.set(c.x + 0.5, c.y + 0.5, c.z + 0.5);
+  c.tex.offset.x = Math.min(9, Math.floor(Math.min(1, prog) * 10)) * 0.1;
+  c.mesh.visible = true; c.t = 0.6;
+}
+function hostMine(q, id, msg) { // a friend is mining: show it here and tell the others
+  const m = { t: 'mine', id, x: msg.x | 0, y: msg.y | 0, z: msg.z | 0, p: Number(msg.p) };
+  if (!isFinite(m.p)) return;
+  remoteMine(m);
+  netSendAll(m, id);
+}
+function updateRemoteCracks(dt) {
+  for (const id in remoteCracks) {
+    const c = remoteCracks[id];
+    if (!c.mesh.visible) continue;
+    c.t -= dt;
+    if (c.t <= 0 || getBlock(c.x, c.y, c.z) === 0) { c.mesh.visible = false; c.t = 0; } // they stopped, or the block is gone
+  }
+}
 function attackDown() {
   if (sleepState) return;
   if (selId() === 261) { startBow(); return; } // the bow is drawn by holding the attack button
@@ -7370,6 +7514,7 @@ function netTick(dt) {
     if (net.t - net.lastPs > 0.1) { net.lastPs = net.t; netSendAll({ t: 'ps', list: playerList() }); }
     if (net.t - net.lastMobs > 0.16) { net.lastMobs = net.t; netSendAll({ t: 'mobs', list: mobSnapshot() }); }
     if (net.t - net.lastTime > 2) { net.lastTime = net.t; netSendAll({ t: 'time', v: worldTime }); }
+    if (net.t - (net.lastDids || 0) > 5) { net.lastDids = net.t; netSendAll({ t: 'dids', ids: drops.filter(d => d.nid !== undefined).map(d => d.nid) }); } // so nobody keeps an item that is gone
   } else if (net.t - net.lastP > 0.1) {
     net.lastP = net.t;
     netSend({ t: 'p', x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), pitch: r2(pitch), cr: crouching, item: selId(), cw: crawling, sw: (leftDown || handSwing > 0) ? 1 : 0, dd: dead });
@@ -7458,6 +7603,7 @@ function setAvatarHeld(av, id) {
 }
 function flashAvatar(id) { const av = net.avatars[id]; if (av) av.hitT = 0.25; }
 function updateAvatars(dt) {
+  updateRemoteCracks(dt);
   if (net.mode === 'off') return;
   const view = net.mode === 'host' ? net.players : net.others;
   for (const id in net.avatars) if (!view[id]) removeAvatar(id);
@@ -7589,6 +7735,7 @@ function hostSendWorld(conn) {
   if (batch.length) conn.send({ t: 'edits', list: batch });
   conn.send({ t: 'ready' });
   for (const oid in net.players) { const o = net.players[oid]; if (oid !== conn.peer && o.skinData) conn.send({ t: 'skin', id: oid, data: o.skinData }); } // how the others look
+  conn.send({ t: 'dlist', list: drops.filter(d => d.nid !== undefined).slice(-120).map(dropMsg) }); // the items already lying around
 }
 function mobByNid(id) { for (const m of mobs) if (m.nid === id && !m.puppet) return m; return null; }
 function hostGot(conn, msg) {
@@ -7640,6 +7787,9 @@ function hostGot(conn, msg) {
     const x = Number(msg.x), y = Number(msg.y), z = Number(msg.z);
     if (isFinite(x) && isFinite(y) && isFinite(z) && Math.hypot(x - q.x, z - q.z) < 40) poisonArea(x, y, z, id);
   } else if (msg.t === 'pvp') hostPvp(q, msg);
+  else if (msg.t === 'dnew') hostDropNew(q, id, msg);
+  else if (msg.t === 'dpick') hostDropPick(q, id, msg);
+  else if (msg.t === 'mine') hostMine(q, id, msg);
   else if (msg.t === 'arrow') { const n = visibleArrow(msg); if (n) netSendAll({ t: 'arrow', x: n[0], y: n[1], z: n[2], dx: n[3], dy: n[4], dz: n[5], power: n[6] }, id); } // a friend's arrow: show it, and pass it on
   else if (msg.t === 'bye') hostDrop(id);
 }
@@ -7711,6 +7861,13 @@ function guestGot(msg) {
   else if (msg.t === 'skin') { const sk = skinDecode(msg.data); if (sk && typeof msg.id === 'string') net.skins[msg.id.slice(0, 60)] = sk; }
   else if (msg.t === 'hurt') playerBitten(Number(msg.dmg) || 1);
   else if (msg.t === 'arrow') visibleArrow(msg);
+  else if (msg.t === 'dspawn') guestDropSpawn(msg);
+  else if (msg.t === 'dlist') { for (const m of (msg.list || [])) guestDropSpawn(m); }
+  else if (msg.t === 'dgone') guestDropGone(msg.nid);
+  else if (msg.t === 'dn') { const d = drops.find(x => x.nid === (msg.nid | 0)); if (d) d.n = Math.max(1, Math.min(64, msg.n | 0)); }
+  else if (msg.t === 'dids') guestDropIds(msg.ids);
+  else if (msg.t === 'dgrant') guestDropGrant(msg);
+  else if (msg.t === 'mine') remoteMine(msg);
   else if (msg.t === 'pvpHurt') pvpHurt(Math.max(0, Math.min(14, Number(msg.dmg) || 1)), Number(msg.fx) || 0, Number(msg.fz) || 0, String(msg.from || '').slice(0, 14));
   else if (msg.t === 'loot') { for (const id of msg.ids) if (ITEMS[id]) dropItem(id, msg.x, msg.y, msg.z); }
 }
@@ -7915,6 +8072,7 @@ function worldTick(dt) {
 }
 function gameTick(dt) { playerTick(dt); worldTick(dt); }
 function loop(now) {
+  window.__framed = true; // (the page's error box checks this)
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   frameNo++;
