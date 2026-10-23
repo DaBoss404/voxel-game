@@ -255,8 +255,8 @@
     <button class="big alt" id="btnDeathQuit">Quit to Title</button>
   </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
 <script>
 // If something goes wrong, show the error on screen instead of failing silently
 window.addEventListener('error', function (e) {
@@ -267,7 +267,12 @@ window.addEventListener('error', function (e) {
     d.onclick = function () { d.style.display = 'none'; };
     document.body.appendChild(d);
   }
-  if (d) { d.style.display = 'block'; d.textContent = 'Game error: ' + e.message + ' (line ' + e.lineno + '). Tap here to hide this.'; }
+  if (d) {
+    var nl = String.fromCharCode(10), st = (e.error && e.error.stack) ? String(e.error.stack).split(nl).slice(0, 4).join(' | ') : '';
+    var where = e.filename ? ' in ' + String(e.filename).split('/').pop() : '';
+    d.style.display = 'block';
+    d.textContent = 'Game error: ' + e.message + ' (line ' + e.lineno + where + '). ' + (st ? st + ' ' : '') + (typeof THREE === 'undefined' ? 'The 3D library did not load: check your internet and reload. ' : '') + 'Tap here to hide this.';
+  }
 });
 
 // ================= Settings =================
