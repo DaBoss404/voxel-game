@@ -294,13 +294,17 @@ const CAVE_TUNNEL = 0.08, CAVE_ROOM = 0.76;
 // Wolves: set WOLF_ATTACKS to false to make them harmless. WOLF_AGGRO is how close (in blocks) you can get before they attack.
 const WOLF_ATTACKS = true, WOLF_AGGRO = 5;
 // Forests: lower these numbers for fewer trees, raise them for thicker forests.
-const FOREST_DENSITY = 0.018, SPARSE_DENSITY = 0.003;
+const FOREST_DENSITY = 0.018, SPARSE_DENSITY = 0.003, DARK_DENSITY = 0.05;
 // Rainforest: bigger JUNGLE_DENSITY = thicker jungle.
 const JUNGLE_DENSITY = 0.028;
 const MAX_TOUCANS = 2, TOUCAN_CHANCE = 0.04, TOUCAN_AGGRO = 14; // toucans are rare, and only go after you when you are within TOUCAN_AGGRO blocks
 const MILK_REGROW = 45, VENOM_REGROW = 60; // seconds before a cow has milk again / a platypus has venom again
 const TOUCANS_ATTACK = true; // rainforest toucans always attack. Set to false to make them harmless.
 let SWAMP_ON = false; // swamps only appear in worlds made with this version
+let DARK_ON = false; // dark forests, and the Mist that lives in them, only in worlds made with this version
+let RUINS_ON = false; // ruined buildings full of Scrappers in the Lift dimension, only in worlds made with this version
+function darkAmt(x, z) { return vnoise(x * 0.0042 + 900, z * 0.0042 - 700); }
+function isDark(x, z) { return DARK_ON && darkAmt(x, z) > 0.66 && !isRain(x, z) && !isSwamp(x, z); } // the Dark Forest: huge dark trees, almost no sunlight
 let NEW_ON = false; // lava, villages and bigger coral reefs only appear in worlds made with this version
 let RAIN_ON = true; // rainforests only appear in worlds made with this version, so older worlds keep their terrain
 
@@ -629,6 +633,9 @@ const bearHead = (tile, turn) => paintTile(tile, 0x6a3f1c, 0.2, P => {
 bearHead(67, 1); bearHead(68, 2); bearHead(69, 0); bearHead(70, 3);
 paintTile(72, 0xa8793f, 0.1, P => { for (let y = 0; y < 16; y += 4) for (let x = 0; x < 16; x++) P(x, y, hx(0x7a5426)); for (let x = 0; x < 16; x += 5) for (let y = 0; y < 16; y++) if (y % 4) P(x, y, hx(0x8a6232)); });
 paintTile(71, 0x6a4a2a, 0.2, P => { for (let x = 4; x < 12; x++) for (let y = 4; y < 12; y++) if ((x - 7.5) * (x - 7.5) + (y - 7.5) * (y - 7.5) < 14) P(x, y, hx(0x1a0e06)); });
+paintTile(73, 0x5a48a8, 0.2, P => { for (let x = 3; x < 13; x++) for (let y = 3; y < 13; y++) { const d = (x - 7.5) * (x - 7.5) + (y - 7.5) * (y - 7.5); if (d < 10) P(x, y, hx(d < 4 ? 0xffffff : 0xd8ccff)); else if (d < 22) P(x, y, hx(0x9a88e8)); } }); // a glowing heart
+paintTile(74, 0xa8793f, 0.1, P => { for (const y of [3, 6, 9, 12]) for (let x = 2; x < 14; x++) if ((x + y) % 5) P(x, y, hx(0x3a2a14)); });                        // a sign with writing
+paintTile(75, 0x3a3a44, 0.1, P => { for (let x = 1; x < 15; x++) { P(x, 2, hx(0x6a6a78)); P(x, 3, hx(0x55555f)); } for (let y = 6; y < 12; y++) for (let x = 5; x < 11; x++) P(x, y, hx(0x2a2a32)); }); // an anvil
 const atlasTex = new THREE.CanvasTexture(atlas);
 atlasTex.magFilter = THREE.NearestFilter;
 atlasTex.minFilter = THREE.NearestFilter;
@@ -648,6 +655,7 @@ BT[71] = [60, 61, BT[1][2]];
 BT[72] = [62, 62, 62]; BT[73] = [63, 63, 63]; BT[74] = [64, 64, 64]; BT[75] = [65, 65, 65];
 BT[76] = [66, 66, 66]; BT[77] = [67, 67, 67]; BT[78] = [68, 68, 68]; BT[79] = [69, 69, 69]; BT[80] = [70, 70, 70];
 BT[85] = [72, 72, 72]; BT[86] = [71, BT[2][1], BT[2][2]];
+BT[87] = [73, 73, 73]; BT[88] = [74, 74, 74]; BT[89] = [75, 75, 75];
 BT[60] = BT[61] = [52, 52, 52]; BT[62] = BT[63] = [53, 53, 53];
 BT[64] = [54, 54, 54]; BT[65] = [55, 55, 55]; BT[66] = [51, 51, 51]; BT[70] = [59, 59, 59];
 BT[67] = [BT[12][0], 56, BT[12][2]]; BT[68] = [BT[12][0], 58, BT[12][2]];
@@ -701,6 +709,9 @@ const ITEMS = {
   154:{n:'Raw Rabbit',k:'cooked',kc:'#e8a8a0',dc:0xe8a8a0}, 155:{n:'Cooked Rabbit',k:'cooked',kc:'#c08050',dc:0xc08050},
   156:{n:'Bear Meat',k:'cooked',kc:'#a04848',dc:0xa04848}, 157:{n:'Cooked Bear Meat',k:'cooked',kc:'#7a3b1e',dc:0x7a3b1e},
   158:{n:'Psychotic Rabbit Meat',k:'cooked',kc:'#c0307a',dc:0xc0307a},
+  159:{n:'Liftite Shrapnel',k:'raw',kc:'#a050c0',dc:0xa050c0},
+  87:{n:'Mist Heart Block',c:0xb0a0ff,b:1,t:73}, 88:{n:'Ruin Sign',c:0x9a7a4a,b:1,t:74}, 89:{n:'Anvil',c:0x3a3a44,b:1,t:75},
+  160:{n:'Mist Heart',k:'heart',kc:'#b0a0ff',dc:0xb0a0ff}, 161:{n:'Upgrade Recipe',k:'paper',dc:0xe8d8a0},
   143:{n:'Paper',k:'paper',dc:0xf4f0e0}, 144:{n:'Map',k:'map',dc:0xe6d8a8}, 145:{n:'Village Compass',k:'compass',dc:0xb8b8b8},
   130:{n:'Bucket',k:'bucket',kc:'#c8c8c8',dc:0xc8c8c8}, 131:{n:'Glass Bottle',k:'bottle',kc:'#cfe8f0',dc:0xcfe8f0},
   132:{n:'Milk Bucket',k:'milkbucket',kc:'#c8c8c8',dc:0xf4f4f4}, 133:{n:'Bottle of Milk',k:'milkbottle',kc:'#cfe8f0',dc:0xf4f4f4},
@@ -762,12 +773,12 @@ const BI = {
   21:{h:3.8,tool:'pick',d:136,minTier:3},
   22:{h:4.5,tool:'pick',d:116,minTier:3},
   23:{h:0.05,d:121}, 24:{h:0.05,d:122}, 25:{h:0.05,d:123},
-  26:{h:2,tool:'axe',d:26}, 27:{h:0.3,d:0}, 28:{h:1.6,tool:'axe',d:28}, 29:{h:0.05,d:124}, 30:{h:0.05,d:0}, 31:{h:0.9,tool:'shovel',d:2}, 32:{h:2.2,tool:'pick',d:32}, 33:{h:0.4,d:33}, 34:{h:0.6,d:34}, 35:{h:1.2,tool:'axe',d:35}, 47:{h:0.6,d:47}, 48:{h:0.6,d:48}, 49:{h:0.6,d:49}, 50:{h:0.6,d:50}, 60:{h:1,tool:'axe',d:147}, 61:{h:1,tool:'axe',d:147}, 62:{h:1,tool:'axe',d:147}, 63:{h:1,tool:'axe',d:147}, 64:{h:0.6,d:64}, 65:{h:0.6,d:65}, 66:{h:4,tool:'pick',d:146,minTier:3}, 67:{h:1.2,tool:'axe',d:67}, 68:{h:1.2,tool:'axe',d:68}, 70:{h:0.3,d:0}, 76:{h:0.3,d:0}, 77:{h:0.3,d:0}, 78:{h:0.3,d:0}, 79:{h:0.3,d:0}, 80:{h:0.3,d:0}, 85:{h:1.2,tool:'axe',d:85}, 86:{h:0.9,tool:'shovel',d:2}, 72:{h:2.2,tool:'pick',d:72}, 73:{h:4.5,tool:'pick',d:150,minTier:4}, 74:{h:3,tool:'pick',d:74}, 75:{h:0.1,d:0}, 71:{h:0.9,tool:'shovel',d:2}, 51:{h:0.6,d:34}, 52:{h:0.6,d:34}, 53:{h:0.6,d:34}, 54:{h:0.6,d:34}, 55:{h:0.6,d:34}, 56:{h:0.6,d:34}, 57:{h:0.6,d:34}, 58:{h:0.6,d:34}
+  26:{h:2,tool:'axe',d:26}, 27:{h:0.3,d:0}, 28:{h:1.6,tool:'axe',d:28}, 29:{h:0.05,d:124}, 30:{h:0.05,d:0}, 31:{h:0.9,tool:'shovel',d:2}, 32:{h:2.2,tool:'pick',d:32}, 33:{h:0.4,d:33}, 34:{h:0.6,d:34}, 35:{h:1.2,tool:'axe',d:35}, 47:{h:0.6,d:47}, 48:{h:0.6,d:48}, 49:{h:0.6,d:49}, 50:{h:0.6,d:50}, 60:{h:1,tool:'axe',d:147}, 61:{h:1,tool:'axe',d:147}, 62:{h:1,tool:'axe',d:147}, 63:{h:1,tool:'axe',d:147}, 64:{h:0.6,d:64}, 65:{h:0.6,d:65}, 66:{h:4,tool:'pick',d:146,minTier:3}, 67:{h:1.2,tool:'axe',d:67}, 68:{h:1.2,tool:'axe',d:68}, 70:{h:0.3,d:0}, 76:{h:0.3,d:0}, 77:{h:0.3,d:0}, 78:{h:0.3,d:0}, 79:{h:0.3,d:0}, 80:{h:0.3,d:0}, 85:{h:1.2,tool:'axe',d:85}, 86:{h:0.9,tool:'shovel',d:2}, 87:{h:2,d:160}, 88:{h:0.6,tool:'axe',d:0}, 89:{h:3,tool:'pick',d:89}, 72:{h:2.2,tool:'pick',d:72}, 73:{h:4.5,tool:'pick',d:150,minTier:4}, 74:{h:3,tool:'pick',d:74}, 75:{h:0.1,d:0}, 71:{h:0.9,tool:'shovel',d:2}, 51:{h:0.6,d:34}, 52:{h:0.6,d:34}, 53:{h:0.6,d:34}, 54:{h:0.6,d:34}, 55:{h:0.6,d:34}, 56:{h:0.6,d:34}, 57:{h:0.6,d:34}, 58:{h:0.6,d:34}
 };
 const FOOD = { 103: 4, 104: 4, 105: 3, 106: 3, 112: 2, 125: 8, 126: 8, 127: 6, 128: 6, 129: 5, 132: 4, 133: 3, 153: 3, 154: 3, 155: 6, 156: 5, 157: 9, 158: 5 };
 const EAT_RETURN = { 132: 130, 133: 131 }; // drinking milk gives the empty bucket or bottle back
 // Furnace: what it can smelt or cook (what goes in -> what comes out), how many seconds each fuel burns, and seconds per item
-const SMELT = { 154: 155, 156: 157, 150: 151, 65: 64, 4: 33, 103: 125, 104: 126, 105: 127, 106: 128, 112: 129, 134: 111, 135: 114, 136: 115 }; // sand -> glass, raw food -> cooked, raw ore -> ingots
+const SMELT = { 154: 155, 156: 157, 150: 159, 65: 64, 4: 33, 103: 125, 104: 126, 105: 127, 106: 128, 112: 129, 134: 111, 135: 114, 136: 115 }; // sand -> glass, raw food -> cooked, raw ore -> ingots
 const FUEL = { 6: 24, 7: 24, 8: 24, 26: 24, 12: 12, 13: 12, 14: 12, 28: 12, 100: 4, 15: 12, 35: 12 };
 const COOK_TIME = 8;
 
@@ -794,7 +805,7 @@ function ck(cx, cz) { return cx * 100003 + cz; }
 
 // A tree grows at a spot if its random number is low enough, and only if no neighbouring spot (within 2 blocks) has an even lower number.
 // That keeps trees spaced out instead of packed trunk to trunk.
-function treeDensity(wx, wz) { return vnoise(wx * 0.03 + 500, wz * 0.03 + 500) > 0.55 ? FOREST_DENSITY : SPARSE_DENSITY; }
+function treeDensity(wx, wz) { if (isDark(wx, wz)) return DARK_DENSITY; return vnoise(wx * 0.03 + 500, wz * 0.03 + 500) > 0.55 ? FOREST_DENSITY : SPARSE_DENSITY; }
 function treeAt(wx, wz) {
   const hv = hash2(wx * 7 + 13, wz * 11 + 5);
   if (hv >= treeDensity(wx, wz)) return false;
@@ -975,6 +986,20 @@ function stampVillages(data, top, ox, oz) {
   }
 }
 
+// the Mist Heart: a glowing block in the top of one tall tree of some dark forest chunks. Break it and the Mist dies.
+function placeMistHeart(data, ox, oz, cx, cz) {
+  if (!isDark(ox + 8, oz + 8) || hash2(cx * 53 + 7, cz * 91 + 3) > 0.25) return;
+  let best = -1, bi = -1;
+  for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+    for (let y = HEIGHT - 2; y > 1; y--) {
+      const i = lx + CH * (lz + CH * y), b = data[i];
+      if (b === 0) continue;
+      if (b >= 9 && b <= 11 && y > best) { best = y; bi = i; }
+      break;
+    }
+  }
+  if (bi >= 0) data[bi] = 87;
+}
 // a rabbit burrow: a dark hole in the grass in the woods, with a small den two blocks of dirt below it
 function denSpot(cx, cz) {
   if (hash2(cx * 211 + 5, cz * 97 + 13) > 0.1) return null; // about one chunk in ten
@@ -1001,6 +1026,119 @@ function liftiteAt(x, y, z) {
   if (y <= 46 && hash3(Math.floor(x / 2) + 1900, Math.floor(y / 2) + 7, Math.floor(z / 2) + 411) < 0.005 && hash3(x + 19, y + 3, z + 11) < 0.7) return 73;
   return 0;
 }
+// ================= Ruined buildings of the Lift dimension =================
+// A big ruined hall with a ring of walls, five loot chests, a hoard chest in the middle, five signs and five secret rooms under the floor.
+// Everything is worked out from the position, so every chunk agrees.
+const RUIN_CELL = 176, RUIN_SIZE = 29;
+const RUIN_ROOMS = [[7, 8], [21, 8], [7, 20], [21, 20], [14, 24]];    // the centres of the five secret rooms (under the floor)
+const RUIN_SIGNS = [[10, 4], [18, 4], [4, 14], [24, 14], [14, 21]];   // where the five signs stand
+const RUIN_LOOT = [[4, 4], [24, 4], [4, 24], [24, 24], [14, 10]];     // the loot chests
+const RUIN_HOARD = [14, 14];                                          // the hoard chest, in the middle of the hall
+const ruinCache = {};
+function ruinInCell(cx, cz) {
+  const key = cx + ',' + cz;
+  if (ruinCache[key] !== undefined) return ruinCache[key];
+  let R = null;
+  if (hash2(cx * 131 + 3, cz * 71 + 9) < 0.7) {
+    const x0 = cx * RUIN_CELL + 20 + Math.floor(hash2(cx * 17 + 5, cz * 29 + 1) * (RUIN_CELL - RUIN_SIZE - 40));
+    const z0 = cz * RUIN_CELL + 20 + Math.floor(hash2(cx * 41 + 7, cz * 23 + 3) * (RUIN_CELL - RUIN_SIZE - 40));
+    const y0 = Math.max(16, Math.min(34, liftHeight(x0 + 14, z0 + 14)));
+    const perm = [0, 1, 2, 3, 4]; // which sign points to which room
+    for (let i = 4; i > 0; i--) { const j = Math.floor(hash2(cx * 211 + i * 7, cz * 97 + i * 13) * (i + 1)); const t = perm[i]; perm[i] = perm[j]; perm[j] = t; }
+    R = { id: key, x0, z0, y0, perm, recipeRoom: Math.floor(hash2(cx * 7 + 1, cz * 3 + 2) * 5), colony: 14 + Math.floor(hash2(cx * 5 + 2, cz * 9 + 4) * 8) };
+  }
+  ruinCache[key] = R;
+  return R;
+}
+function ruinAtXZ(x, z) { // the ruin whose building covers this column, if any
+  const R = ruinInCell(Math.floor(x / RUIN_CELL), Math.floor(z / RUIN_CELL));
+  if (R && x >= R.x0 && z >= R.z0 && x < R.x0 + RUIN_SIZE && z < R.z0 + RUIN_SIZE) return R;
+  return null;
+}
+function ruinSignText(R, i) { // what sign number i says: how to walk to its room
+  const s = RUIN_SIGNS[i], c = RUIN_ROOMS[R.perm[i]];
+  const dx = c[0] - s[0], dz = c[1] - s[1], parts = [];
+  if (dz) parts.push(Math.abs(dz) + ' steps ' + (dz < 0 ? 'north' : 'south'));
+  if (dx) parts.push(Math.abs(dx) + ' steps ' + (dx < 0 ? 'west' : 'east'));
+  return 'A hidden room: from this sign go ' + parts.join(' and ') + ', then dig down 2 blocks.';
+}
+function ruinBlock(R, wx, y, wz) { // the block of the ruin at a place (-1: not part of it)
+  const lx = wx - R.x0, lz = wz - R.z0, ly = y - R.y0;
+  if (lx < 0 || lz < 0 || lx >= RUIN_SIZE || lz >= RUIN_SIZE || ly < -6 || ly > 16) return -1;
+  if (ly < 0) { // under the floor: solid, apart from the five secret rooms
+    for (let i = 0; i < 5; i++) {
+      const c = RUIN_ROOMS[i];
+      if (Math.abs(lx - c[0]) <= 1 && Math.abs(lz - c[1]) <= 1 && ly >= -4 && ly <= -2) return (ly === -4 && lx === c[0] && lz === c[1]) ? 35 : 0;
+    }
+    return 72;
+  }
+  if (ly === 0) return 72;
+  if (ly === 1) {
+    if (lx === RUIN_HOARD[0] && lz === RUIN_HOARD[1]) return 35;
+    for (const c of RUIN_LOOT) if (lx === c[0] && lz === c[1]) return 35;
+    for (const c of RUIN_SIGNS) if (lx === c[0] && lz === c[1]) return 88;
+  }
+  const hh = (k) => hash2(wx * 7 + k, wz * 13 + k * 3);
+  const edge = Math.min(lx, lz, RUIN_SIZE - 1 - lx, RUIN_SIZE - 1 - lz);
+  if (edge <= 1) { // the outer wall, broken down, with a gate in the middle of each side
+    if ((lx >= 12 && lx <= 16 && (lz <= 1 || lz >= RUIN_SIZE - 2)) || (lz >= 12 && lz <= 16 && (lx <= 1 || lx >= RUIN_SIZE - 2))) return 0;
+    return ly <= 2 + Math.floor(hh(1) * 5) ? 72 : 0;
+  }
+  // the ring wall of the great hall, with a gap in the middle of each side
+  const inHall = lx >= 8 && lx <= 20 && lz >= 8 && lz <= 20;
+  if (inHall && (lx === 8 || lx === 20 || lz === 8 || lz === 20) && !((lx >= 13 && lx <= 15) || (lz >= 13 && lz <= 15))) return ly <= 2 + Math.floor(hh(2) * 3) ? 72 : 0;
+  for (const c of [[11, 11], [17, 11], [11, 17], [17, 17]]) if (lx === c[0] && lz === c[1]) return ly <= 2 + Math.floor(hh(3) * 4) ? 72 : 0; // pillars
+  if (hh(4) < 0.03 && ly <= 1 + Math.floor(hh(5) * 2)) return 72; // rubble
+  return 0;
+}
+function stampRuins(data, top, ox, oz) {
+  const seen = {};
+  for (const px of [ox, ox + 15]) for (const pz of [oz, oz + 15]) {
+    const R = ruinInCell(Math.floor(px / RUIN_CELL), Math.floor(pz / RUIN_CELL));
+    if (!R || seen[R.id]) continue;
+    seen[R.id] = true;
+    for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+      const wx = ox + lx, wz = oz + lz;
+      if (wx < R.x0 || wz < R.z0 || wx >= R.x0 + RUIN_SIZE || wz >= R.z0 + RUIN_SIZE) continue;
+      for (let y = R.y0 - 6; y <= R.y0 + 16; y++) { const b = ruinBlock(R, wx, y, wz); if (b >= 0) data[lx + CH * (lz + CH * y)] = b; }
+      for (let y = HEIGHT - 2; y >= 0; y--) if (data[lx + CH * (lz + CH * y)] !== 0) { top[lx + CH * lz] = y; break; }
+    }
+  }
+}
+// which chest of a ruin is this? { R, kind: 'hoard' | 'loot' | 'room', i }
+function ruinChestKind(x, y, z) {
+  if (DIM !== 1 || !RUINS_ON) return null;
+  const R = ruinAtXZ(x, z);
+  if (!R) return null;
+  const lx = x - R.x0, lz = z - R.z0, ly = y - R.y0;
+  if (ly === 1) {
+    if (lx === RUIN_HOARD[0] && lz === RUIN_HOARD[1]) return { R, kind: 'hoard', i: 0 };
+    for (let i = 0; i < 5; i++) if (lx === RUIN_LOOT[i][0] && lz === RUIN_LOOT[i][1]) return { R, kind: 'loot', i };
+  }
+  if (ly === -4) for (let i = 0; i < 5; i++) if (lx === RUIN_ROOMS[i][0] && lz === RUIN_ROOMS[i][1]) return { R, kind: 'room', i };
+  return null;
+}
+function fillRuinChest(c, x, y, z, rk) {
+  let s = Math.floor(hash3(x, y, z) * 1e9) + 1;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const put = (id, lo, hi) => { const n = lo + Math.floor(rnd() * (hi - lo + 1)); for (let tries = 0; tries < 30; tries++) { const k = Math.floor(rnd() * 27); if (!c.slots[k]) { c.slots[k] = { id, n }; return; } } };
+  if (rk.kind === 'hoard') { put(150, 3, 6); put(159, 1, 3); put(115, 2, 5); put(114, 3, 6); put(142, 8, 16); }
+  else if (rk.kind === 'loot') {
+    put(150, 2, 5); put(115, 2, 5); put(111, 3, 7);
+    if (rnd() < 0.6) put(159, 1, 3); if (rnd() < 0.4) put(146, 1, 3); if (rnd() < 0.25) put(116, 1, 2); if (rnd() < 0.5) put(125, 3, 6);
+  } else { // a secret room: the best things
+    put(116, 2, 4); put(146, 3, 6); put(150, 4, 8); put(115, 4, 8); put(159, 3, 6); put(111, 5, 9);
+    if (rk.i === rk.R.recipeRoom) c.slots[13] = { id: 161, n: 1 }; // the upgrade recipe is in one of the five
+  }
+}
+function ruinById(id) { const a = id.split(','); return ruinInCell(Number(a[0]), Number(a[1])); }
+function ruinChestFor(R, i) { // the hoard chest of a ruin, filled
+  const x = R.x0 + RUIN_HOARD[0], y = R.y0 + 1, z = R.z0 + RUIN_HOARD[1], k = furnKey(x, y, z);
+  if (!chests[k]) chests[k] = { slots: new Array(27).fill(null), init: true };
+  const c = chests[k];
+  if (!c.ruinInit) { c.ruinInit = true; fillRuinChest(c, x, y, z, { R, kind: 'hoard', i: 0 }); }
+  return c;
+}
 function generateLiftChunk(cx, cz) {
   const data = new Uint8Array(CH * HEIGHT * CH);
   const top = new Int16Array(CH * CH);
@@ -1012,6 +1150,7 @@ function generateLiftChunk(cx, cz) {
     for (let y = 0; y <= h; y++) data[lx + CH * (lz + CH * y)] = (y < h - 1 ? (liftiteAt(wx, y, wz) || oreAt(wx, y, wz)) : 0) || 72; // liftite, plus every ore of the overworld
     for (let y = 3; y <= h - 3; y++) if (caveAt(wx, y, wz, h)) data[lx + CH * (lz + CH * y)] = (y <= 12 && lavaPocket(wx, wz)) ? LAVA : 0;
   }
+  if (RUINS_ON) stampRuins(data, top, ox, oz);
   const ed = edits[cx + ',' + cz];
   if (ed) for (const k in ed) data[k] = ed[k];
   return { cx, cz, data, top, solid: null, water: null, meshed: false, edited: false };
@@ -1085,9 +1224,10 @@ function generateChunk(cx, cz) {
         continue;
       }
       const bn = vnoise(wx * 0.004 + 100, wz * 0.004 - 50);
-      const type = bn < 0.38 ? 1 : (bn < 0.66 ? 0 : 2); // 0 oak, 1 birch, 2 spruce
+      const dk = isDark(wx, wz); // the Dark Forest: only huge dark spruces, packed together
+      const type = dk ? 2 : (bn < 0.38 ? 1 : (bn < 0.66 ? 0 : 2)); // 0 oak, 1 birch, 2 spruce
       const logId = [6, 7, 8][type], leafId = [9, 10, 11][type];
-      const th = 4 + Math.floor(hash2(wx + 99, wz + 77) * 3);
+      const th = (dk ? 7 : 4) + Math.floor(hash2(wx + 99, wz + 77) * (dk ? 5 : 3));
       if (type === 2) {
         for (let dy = 0; dy < th; dy++) {
           const y = h + th + 1 - dy;
@@ -1110,6 +1250,7 @@ function generateChunk(cx, cz) {
       for (let y = h + 1; y <= h + th; y++) setL(lx, y, lz, logId, false);
     }
   }
+  if (DARK_ON) placeMistHeart(data, ox, oz, cx, cz);
   // ferns on the rainforest floor
   if (RAIN_ON) {
     for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
@@ -1465,7 +1606,7 @@ function giveGear(id, dur) {
 // armor
 function armorPoints() {
   let t = 0;
-  for (const k in equipped) if (equipped[k]) t += ARMOR[equipped[k].id].pts;
+  for (const k in equipped) if (equipped[k]) t += ARMOR[equipped[k].id].pts + (equipped[k].up || 0); // a reinforced piece gives 1 more
   return t;
 }
 function equipSlot(i) {
@@ -1691,7 +1832,9 @@ addShaped('Chest', 35, 1, ['PPP', 'P P', 'PPP'], { P: PL });                   /
 addShaped('Bow', 261, 1, [' ST', 'S T', ' ST'], { S: 100, T: 118 });           // sticks and string
 addShaped('Arrow', 142, 4, ['R', 'S', 'F'], { R: 3, S: 100, F: 107 });         // stone tip, stick, feather at the back
 addShaped('Toucan Sword', 260, 1, ['B', 'S'], { B: 139, S: 100 });             // a toucan beak on a stick
-addShaped('Lift Frame', 74, 14, ['HHH', 'HEH', 'HHH'], { H: 140, E: 146 }); // 8 Lift Man hearts around an emerald: the 14 blocks of one portal frame
+addLess('Lift Frame', 74, 1, [140, 146]); // a Lift Man's heart and an emerald make ONE frame block: a portal needs 14 of them
+addLess('Liftite Ingot', 151, 1, [159, 115]); // liftite shrapnel (from smelting raw liftite) and a gold ingot
+addShaped('Anvil', 89, 1, ['III', ' I ', 'III'], { I: 111 }); // 7 iron ingots
 addShaped('Fence', 85, 3, ['PSP', 'PSP'], { P: PL, S: 100 });            // planks and sticks make 3 fence posts
 addLess('Lead', 152, 2, [118, 118, 118, 108]);                            // 3 string and a leather make 2 leads
 addShaped('Door', 147, 1, ['PP', 'PP', 'PP'], { P: PL });                  // 6 planks
@@ -1834,11 +1977,11 @@ const airEl = document.getElementById('airBar'), poisonTagEl = document.getEleme
 const bowBarEl = document.getElementById('bowBar'), bowFillEl = document.getElementById('bowFill');
 let panelOpen = false, panelMode = 'inv', toastT = null;
 
-function toast(m) {
+function toast(m, ms) {
   toastEl.textContent = m;
   toastEl.style.display = 'block';
   clearTimeout(toastT);
-  toastT = setTimeout(() => { toastEl.style.display = 'none'; }, 2600);
+  toastT = setTimeout(() => { toastEl.style.display = 'none'; }, ms || 2600);
 }
 function drawKind(cx, k, col) {
   const P = (x, y, c) => { cx.fillStyle = c; cx.fillRect(x, y, 1, 1); };
@@ -2657,6 +2800,8 @@ const MOBS = {
   lift:     { hp: 40, speed: 2.4, bw: 0.6, bh: 1.3, bl: 0.5, hs: 0.5, hostile: true, lift: true, dmg: 4, r: 0.55 },
   otter:    { hp: 10, speed: 1.3, bw: 0.35, bh: 0.3, bl: 0.85, legH: 0.15, legW: 0.1, hs: 0.3, color: 0x7a5230, head: 0x8a6240, leg: 0x5a3a20, legs: 4, r: 0.35, aquatic: true, swims: true, otter: true, dmg: 2 },
   alligator: { hp: 40, speed: 0.6, bw: 0.6, bh: 0.4, bl: 1.6, legH: 0.2, legW: 0.16, hs: 0.45, color: 0x3a6a2a, head: 0x2f5a22, leg: 0x2f5a22, legs: 4, r: 0.6, aquatic: true, swims: true, alligator: true },
+  scrapper: { hp: 14, speed: 1.6, bw: 0.45, bh: 0.55, bl: 0.3, legH: 0.4, legW: 0.15, hs: 0.38, color: 0x6a5470, head: 0x8a7a6a, leg: 0x3a2a44, legs: 2, r: 0.3, scrapper: true, dmg: 2 },
+  mist:     { hp: 30, speed: 2.2, bw: 0.55, bh: 1.3, bl: 0.35, legH: 0.35, legW: 0.3, hs: 0.5, color: 0xcfd8ff, head: 0xe6ecff, leg: 0xb0b8e8, legs: 2, r: 0.4, mist: true, dmg: 4 }, // the Mist: it cannot be hurt, only killed through its heart
   psycho:   { hp: 9, speed: 1.5, bw: 0.34, bh: 0.34, bl: 0.6, legH: 0.14, legW: 0.09, hs: 0.24, color: 0x7a3030, head: 0x8a3636, leg: 0x4a1a1a, legs: 4, r: 0.3, rabbit: true, psycho: true, dmg: 3 }, // triple the health of a rabbit
   rabbit:   { hp: 3, speed: 1.1, bw: 0.28, bh: 0.28, bl: 0.5, legH: 0.12, legW: 0.08, hs: 0.2, color: 0xb89a70, head: 0xb89a70, leg: 0x9a7a50, legs: 4, r: 0.25, rabbit: true },
   bear:     { hp: 60, speed: 1.0, bw: 0.9, bh: 0.9, bl: 1.5, legH: 0.55, legW: 0.3, hs: 0.6, color: 0x5a3a22, head: 0x4a2e1a, leg: 0x3a2412, legs: 4, r: 0.7, bear: true, dmg: 8 }
@@ -2680,7 +2825,8 @@ const DROPS = {
   otter:   [{ id: 108, min: 1, max: 2, ch: 1.0 }, { id: 112, min: 1, max: 1, ch: 0.5 }],
   bear:    [{ id: 156, min: 2, max: 4, ch: 1.0 }, { id: 70, min: 1, max: 1, ch: 0.3 }], // bear meat, and 30% for a bear skin
   rabbit:  [{ id: 153, min: 1, max: 2, ch: 1.0 }, { id: 154, min: 1, max: 1, ch: 1.0 }], // carrots and rabbit meat
-  psycho:  [{ id: 158, min: 1, max: 1, ch: 1.0 }] // psychotic rabbit meat
+  psycho:  [{ id: 158, min: 1, max: 1, ch: 1.0 }], // psychotic rabbit meat
+  scrapper: [{ id: 159, min: 1, max: 2, ch: 0.4 }]
 };
 const mobs = [];
 const net = {
@@ -2975,6 +3121,23 @@ function buildAlligatorExtras(g, mk, s, hy, hz) {
   part(0.3, 0.2, 1.0, 0x356426, 0, s.legH + s.bh * 0.5, -s.bl / 2 - 0.5);                      // the tail
   part(0.14, 0.14, 0.7, 0x356426, 0, s.legH + s.bh * 0.5, -s.bl / 2 - 1.2);
 }
+function buildMistExtras(g, mk, s, hy, hz) { // long wispy arms, dark hollow eyes and a ragged tail trailing behind
+  const part = (w, h, l, c, x, y, z) => { const m = mk(w, h, l, c); m.position.set(x, y, z); g.add(m); return m; };
+  for (const sx of [-1, 1]) {
+    part(0.1, 0.7, 0.1, 0xdde4ff, sx * (s.bw / 2 + 0.08), s.legH + s.bh * 0.55, 0);
+    part(0.07, 0.07, 0.04, 0x1a1a2a, sx * s.hs * 0.22, hy + 0.04, hz + s.hs / 2);
+  }
+  part(0.3, 0.5, 0.1, 0xc4ccf0, 0, s.legH * 0.5, -0.2);
+  part(0.18, 0.4, 0.08, 0xb0b8e8, 0.05, 0.1, -0.32);
+}
+function buildScrapperExtras(g, mk, s, hy, hz) { // big pointy ears, glowing yellow eyes and a backpack of scrap
+  const part = (w, h, l, c, x, y, z) => { const m = mk(w, h, l, c); m.position.set(x, y, z); g.add(m); return m; };
+  for (const sx of [-1, 1]) {
+    part(0.06, 0.2, 0.06, 0x8a7a6a, sx * s.hs * 0.62, hy + 0.12, hz);
+    part(0.05, 0.05, 0.04, 0xffd040, sx * s.hs * 0.25, hy + 0.04, hz + s.hs / 2);
+  }
+  part(0.34, 0.3, 0.16, 0x5a4a30, 0, s.legH + s.bh * 0.55, -s.bl / 2 - 0.1);
+}
 function buildRabbitExtras(g, mk, s, hy, hz) {
   const part = (w, h, l, c, x, y, z) => { const m = mk(w, h, l, c); m.position.set(x, y, z); g.add(m); return m; };
   for (const sx of [-1, 1]) part(0.05, 0.26, 0.08, 0xa88a62, sx * s.hs * 0.28, hy + s.hs * 0.5 + 0.12, hz - 0.02); // long ears
@@ -3055,6 +3218,8 @@ function spawnMob(type, x, y, z) {
     if (s.alligator) buildAlligatorExtras(g, mk, s, hy, hz);
     if (s.bear) buildBearExtras(g, mk, s, hy, hz);
     if (s.rabbit) buildRabbitExtras(g, mk, s, hy, hz);
+    if (s.scrapper) buildScrapperExtras(g, mk, s, hy, hz);
+    if (s.mist) buildMistExtras(g, mk, s, hy, hz);
     const lp = s.legs === 4
       ? [[-1, 1], [1, 1], [-1, -1], [1, -1]].map(a => [a[0] * (s.bw / 2 - s.legW / 2), a[1] * (s.bl / 2 - s.legW / 2)])
       : [[-s.bw / 4, 0], [s.bw / 4, 0]];
@@ -3080,6 +3245,7 @@ function spawnMob(type, x, y, z) {
   const made = mobs[mobs.length - 1];
   if (extra) Object.assign(made, extra);
   if (type === 'lift') made.neutral = true; // Lift Men are calm until you hit one (or attack a villager)
+  if (s.mist) { made.mats.forEach(o => { o.m.transparent = true; o.m.opacity = 0.55; }); made.shown = true; made.blink = 2 + Math.random() * 2; }
   return made;
 }
 function removeMob(m) {
@@ -3116,6 +3282,11 @@ function trySpawnMobs(c) {
       if (nearestPlayerDist(x, z) > 18 && !boxCollides(x, y, z, 0.5, 2.1)) spawnMob('lift', x, y, z);
     }
     return;
+  }
+  if (DARK_ON && countMobs(['mist']) < 2 && Math.random() < 0.06) { // the Mist lives in the dark forest
+    const lx = Math.floor(Math.random() * CH), lz = Math.floor(Math.random() * CH);
+    const x = c.cx * CH + lx + 0.5, z = c.cz * CH + lz + 0.5, h = c.top[lx + CH * lz];
+    if (isDark(x, z) && h > SEA + 1 && nearestPlayerDist(x, z) > 14) spawnMob('mist', x, h + 1, z);
   }
   // land animals on grass
   if (countMobs(LAND) < 30 && Math.random() < 0.45) {
@@ -3692,6 +3863,8 @@ function updateMob(m, dt) {
   if (s.hostile && !m.leash && !stunned) wolfAI(m, dt, s); // an animal on a lead behaves
   if (s.bear && !m.leash && !stunned) bearAI(m, dt, s);
   if (s.psycho && !m.leash && !stunned) psychoAI(m, dt, s);
+  if (s.mist) mistAI(m, dt, s);
+  if (s.scrapper) scrapperAI(m, dt, s);
   if (s.rabbit) rabbitAI(m, dt, s);
   if (m.leash) leashAI(m, dt);
   if (s.otter && !stunned) otterAI(m, dt, s);
@@ -3761,6 +3934,7 @@ function startDeath(m) {
   if (m.leash) { m.leash = null; dropRope(m); dropItem(152, m.x, m.y + 0.5, m.z, { vy: 2 }); } // the lead drops
   if (m.village && m.type === 'villager') villageSpawnT[m.village] = worldTime + 180; // a village takes a while to get a new villager
   if (m.village && m.type === 'lift') villageLiftT[m.village] = worldTime + 300;   // and 5 minutes to get a new Lift Man
+  if (m.type === 'scrapper' && m.ruin) ruinSpawnT[m.ruin] = Math.max(ruinSpawnT[m.ruin] || 0, worldTime + 20); // the colony fills up again slowly
   if (m.tamed) toast('Your wolf died.');
   m.mats.forEach(o => o.m.color.set(0xff3030));
   const ids = [];
@@ -3777,7 +3951,7 @@ function hitMob(m) {
   if (m.dying) return;
   const g = selGear();
   const def = g ? TOOLS[g.id] : null;
-  const dmg = (def ? def.dmg : 1) + strength; // psychotic rabbit meat makes you stronger
+  const dmg = (def ? def.dmg : 1) + strength + (g && g.up ? 2 : 0); // psychotic rabbit meat makes you stronger; a reinforced tool hits harder
   if (m.puppet) {
     if (!m.tamed) { netSend({ t: 'hit', id: m.nid, dmg, fx: p.x, fz: p.z }); m.flash = 0.25; }
   } else { damageMob(m, dmg, p.x, p.z, null); if (m.type === 'villager') provokeVillagers(m); }
@@ -3785,6 +3959,8 @@ function hitMob(m) {
 }
 function damageMob(m, dmg, fx, fz, killer) {
   if (m.dying) return;
+  if (m.spec.scrapper) angerScrappers(m); // hit one and the whole colony comes for you
+  if (m.spec.mist) { if (performance.now() - mistToastAt > 2500) { mistToastAt = performance.now(); toast('It cannot be hurt... find the Mist Heart in the trees.'); } return; }
   m.hp -= dmg;
   if (!m.tamed) petsTarget(m); // your pets join any fight
   const ax = m.x - fx, az = m.z - fz, l = Math.hypot(ax, az) || 1;
@@ -4042,6 +4218,7 @@ function breakBlock(r) {
   if (r.b === 32) dumpFurnace(x, y, z);
   if (r.b === 35) dumpChest(x, y, z);
   if (isRugBlk(r.b)) breakRug(x, y, z);
+  if (r.b === 87) mistHeartBroken(x, y, z);
   if (isDoorBlk(r.b)) { // the other half of the door goes too
     const oy = (r.b === 60 || r.b === 61) ? y + 1 : y - 1;
     if (isDoorBlk(getBlock(x, oy, z))) setBlock(x, oy, z, 0);
@@ -4169,7 +4346,7 @@ function playerAtRay(maxD) {
   return null;
 }
 function hitPlayer(pl) {
-  const g = selGear(), def = g ? TOOLS[g.id] : null, dmg = (def ? def.dmg : 1) + strength;
+  const g = selGear(), def = g ? TOOLS[g.id] : null, dmg = (def ? def.dmg : 1) + strength + (g && g.up ? 2 : 0);
   if (def) wearSel(1);
   const fx = r2(p.x), fz = r2(p.z);
   if (net.mode === 'host') { if (pl.id !== 'host') netSendTo(pl.id, { t: 'pvpHurt', dmg, fx, fz, from: net.name }); }
@@ -4238,7 +4415,10 @@ function useDown() {
   if (r && isBedBlk(r.b)) { useBed(r.hit); return; }
   if (r && isDoorBlk(r.b)) { toggleDoor(r.hit[0], r.hit[1], r.hit[2]); return; }
   if (r && isFence(r.b) && tieLeash(r.hit)) return;
+  if (r && r.b === 88) { signClue(r.hit); return; }
+  if (r && r.b === 89) { useAnvil(); return; }
   const id = selId();
+  if (id === 161) { learnRecipe(); return; }
   { const lm0 = mobAtRay(r ? Math.min(4, r.t) : 4); // leads: lead an animal, let it go
     if (lm0 && !lm0.dying) {
       if (lm0.leash && !(lm0.type === 'alligator' && id !== 152)) { unleash(lm0); return; } // (a led alligator can still be talked to: let it go with the lead)
@@ -4863,7 +5043,7 @@ function createWorld(name) {
     id: 'w' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36),
     name: name && name.trim() ? name.trim().slice(0, 24) : 'World ' + n,
     seed: 1 + Math.floor(Math.random() * 2000000000),
-    created: Date.now(), played: Date.now(), time: DAY_LENGTH * 0.05, gen: 4
+    created: Date.now(), played: Date.now(), time: DAY_LENGTH * 0.05, gen: 5
   };
   list.push({ id: rec.id, name: rec.name, created: rec.created, played: rec.played });
   writeIndex(list);
@@ -4885,7 +5065,7 @@ function saveWorld(manual) {
   const rec = {
     id: cur.id, name: cur.name, seed: cur.seed, gen: cur.gen || 1, created: cur.created, played: Date.now(), time: worldTime,
     spawn: sp0, player: dead ? { x: sp0.x, y: sp0.y, z: sp0.z, yaw: yaw, pitch: pitch } : { x: p.x, y: p.y, z: p.z, yaw: yaw, pitch: pitch },
-    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packWorldEdits(), edits1: lastE1, dim: DIM, portalLinks: portalLinks, saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn, known: knownVillages, cheats: cheatsOn, quest: { idx: quest.idx, taken: quest.taken }, colonies: colonies.concat(penColoniesNow()), dens: Object.keys(denDone), strength, kept: keptAnimals.concat(keptNow()),
+    health: dead ? 20 : health, hunger: dead ? 20 : hunger, sel: sel, slots: savedSlots(), equipped: equipped, edits: packWorldEdits(), edits1: lastE1, dim: DIM, portalLinks: portalLinks, saplings: saplings, furnaces: furnaces, chests: chests, bed: bedSpawn, known: knownVillages, cheats: cheatsOn, quest: { idx: quest.idx, taken: quest.taken }, colonies: colonies.concat(penColoniesNow()), dens: Object.keys(denDone), strength, knowsUpgrade, kept: keptAnimals.concat(keptNow()),
     pets: mobs.filter(m => m.tamed && !m.dying).map(m => ({ hp: m.hp, pow: m.pow || 0 }))
   };
   if (writeWorld(rec)) {
@@ -4915,7 +5095,7 @@ function resetWorldState() {
   shots.length = 0; clearOreMesh(); oreVisionT = 0; liftReady = 0; villageT = 0; villageCache.clear();
   for (const k in knownVillages) delete knownVillages[k];
   quest.idx = 0; quest.taken = false;
-  colonies = []; strength = 0; keptAnimals = []; for (const k in penTimers) delete penTimers[k]; for (const k in denDone) delete denDone[k];
+  colonies = []; strength = 0; keptAnimals = []; knowsUpgrade = false; for (const k in ruinSpawnT) delete ruinSpawnT[k]; for (const k in penTimers) delete penTimers[k]; for (const k in denDone) delete denDone[k];
   DIM = 0; dimStore[0] = null; dimStore[1] = null; portalLinks.over = null; portalLinks.lift = null; portalT = 0; portalCool = 0;
   cheatsOn = false; burnT = 0; burnTick = 0; crawling = false; playerPoison = false; air = AIR_MAX; airHurtT = 0;
   if (sleepState) { scene.remove(sleepState.av.group); sleepState = null; document.getElementById('sleepOverlay').style.opacity = 0; }
@@ -4961,6 +5141,8 @@ function startWorld(rec) {
   RAIN_ON = (rec.gen || 1) >= 2; // rainforests only in worlds made with this version
   NEW_ON = (rec.gen || 1) >= 3;  // lava, villages and bigger reefs only in worlds made with this version
   SWAMP_ON = (rec.gen || 1) >= 4; // swamps only in worlds made with this version
+  DARK_ON = (rec.gen || 1) >= 5;  // dark forests and the Mist only in worlds made with this version
+  RUINS_ON = (rec.gen || 1) >= 5; // ruins and Scrappers in the Lift dimension only in worlds made with this version
   worldTime = rec.time || 0;
   unpackEdits(rec.edits);
   dimStore[0] = null; dimStore[1] = storeFromPacked(rec.edits1);
@@ -4973,7 +5155,7 @@ function startWorld(rec) {
   Object.assign(knownVillages, rec.known || {});
   cheatsOn = !!rec.cheats && !rec.remote;
   colonies = (rec.colonies || []).slice();
-  strength = Math.max(0, Math.min(10, rec.strength | 0)); keptAnimals = (rec.kept || []).slice();
+  strength = Math.max(0, Math.min(10, rec.strength | 0)); keptAnimals = (rec.kept || []).slice(); knowsUpgrade = !!rec.knowsUpgrade;
   for (const k of (rec.dens || [])) denDone[k] = true; // a burrow's rabbits are not born again every time you load the world
   quest.idx = (rec.quest && rec.quest.idx) || 0; quest.taken = !!(rec.quest && rec.quest.taken);
   sp0 = rec.spawn || findSpawn();
@@ -5152,6 +5334,8 @@ function updateFurnaces(dt) {
 // ================= Chests =================
 function openChest(x, y, z) {
   const k = furnKey(x, y, z);
+  const rk = ruinChestKind(x, y, z);
+  if (rk) { angerRuin(rk.R); if (!chests[k]) chests[k] = { slots: new Array(27).fill(null), init: true }; if (!chests[k].ruinInit) { chests[k].ruinInit = true; fillRuinChest(chests[k], x, y, z, rk); } } // looting a ruin chest angers the colony
   if (!chests[k]) chests[k] = { slots: new Array(27).fill(null), init: false };
   const c = chests[k];
   if (!c.init) { c.init = true; if (typeof isVillageChest === 'function' && isVillageChest(x, y, z)) fillVillageChest(c, x, y, z); } // a village chest holds loot the first time it is opened
@@ -5161,6 +5345,7 @@ function openChest(x, y, z) {
 // breaking a chest drops everything inside
 function dumpChest(x, y, z) {
   const k = furnKey(x, y, z);
+  { const rk0 = ruinChestKind(x, y, z); if (rk0) { angerRuin(rk0.R); if (!chests[k]) { chests[k] = { slots: new Array(27).fill(null), init: true, ruinInit: true }; fillRuinChest(chests[k], x, y, z, rk0); } } } // breaking one angers the colony too
   let c = chests[k];
   if (!c) {
     if (typeof isVillageChest === 'function' && isVillageChest(x, y, z)) { c = { slots: new Array(27).fill(null), init: true }; fillVillageChest(c, x, y, z); }
@@ -6001,11 +6186,62 @@ handGroup.position.set(0.5, -0.62, -0.3); handGroup.rotation.x = 0.65; // the pi
 camera.add(handGroup);
 scene.add(camera); // so the hand (which is attached to the camera) gets drawn
 let handBob = 0, handEquip = 0, handLastId = -1, handSkinRef = undefined;
+// ================= The bow: one hand holds it, the other pulls the string =================
+const bowRig = new THREE.Group();
+bowRig.visible = false;
+camera.add(bowRig);
+const bowBoxes = {};
+function bowBox(name, w, h, l, color, order) {
+  const m = new THREE.Mesh(boxGeo(w, h, l), new THREE.MeshBasicMaterial({ color, depthTest: false }));
+  m.rotation.order = 'YXZ'; m.renderOrder = order;
+  bowRig.add(m); bowBoxes[name] = m;
+  return m;
+}
+bowBox('lArm', 0.15, 0.15, 1, 0xe0b090, 1000); bowBox('rArm', 0.15, 0.15, 1, 0xe0b090, 1000);
+bowBox('lFist', 0.18, 0.18, 0.18, 0xe0b090, 1003); bowBox('rFist', 0.17, 0.17, 0.17, 0xe0b090, 1003);
+for (const n of ['uA', 'uB', 'lA', 'lB']) bowBox(n, 0.055, 0.055, 1, 0x7a4a22, 1002); // the two halves of each limb of the bow
+bowBox('grip', 0.075, 0.17, 0.075, 0x4a2a10, 1003);
+bowBox('strU', 0.012, 0.012, 1, 0xf0f0f0, 1002); bowBox('strL', 0.012, 0.012, 1, 0xf0f0f0, 1002);
+bowBox('shaft', 0.024, 0.024, 0.72, 0xc8a870, 1004); bowBox('head', 0.055, 0.055, 0.09, 0x8a8a94, 1004); bowBox('fea', 0.07, 0.07, 0.06, 0xf0f0f0, 1004);
+// a thin box stretched from one point to another (points are in front of the camera: it looks down -z)
+function bowSeg(m, ax, ay, az, bx, by, bz) {
+  const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz) || 0.001;
+  m.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+  m.scale.z = len;
+  m.rotation.y = Math.atan2(dx, dz); m.rotation.x = -Math.asin(dy / len);
+}
+// draw: 0 = string at rest, 1 = fully drawn. The left hand holds the bow out in front; the right hand pulls the string back (with the arrow, if you have one)
+function updateBowRig(draw, bx, by) {
+  bowRig.position.set(bx * 0.5, by * 0.5 - handEquip * 0.4, 0);
+  const gx = -0.26, gy = -0.1, gz = -0.74;
+  const tz = gz + 0.05 + draw * 0.09, mz = gz + 0.015 + draw * 0.03; // the tips bend towards you as you draw
+  bowSeg(bowBoxes.uA, gx, gy + 0.07, gz, gx, gy + 0.24, mz);
+  bowSeg(bowBoxes.uB, gx, gy + 0.24, mz, gx, gy + 0.41, tz);
+  bowSeg(bowBoxes.lA, gx, gy - 0.07, gz, gx, gy - 0.24, mz);
+  bowSeg(bowBoxes.lB, gx, gy - 0.24, mz, gx, gy - 0.41, tz);
+  bowBoxes.grip.position.set(gx, gy, gz);
+  const nx = gx + draw * 0.2, ny = gy - draw * 0.02, nz = gz + 0.05 + draw * 0.36; // where the string is pulled to
+  bowSeg(bowBoxes.strU, gx, gy + 0.41, tz, nx, ny, nz);
+  bowSeg(bowBoxes.strL, gx, gy - 0.41, tz, nx, ny, nz);
+  bowBoxes.lFist.position.set(gx, gy - 0.02, gz + 0.05);
+  bowSeg(bowBoxes.lArm, -0.62, -0.78, -0.02, gx, gy - 0.03, gz + 0.1);
+  bowBoxes.rFist.position.set(nx + 0.02, ny - 0.03, nz + 0.07);
+  bowSeg(bowBoxes.rArm, 0.6, -0.78, -0.02, nx + 0.03, ny - 0.04, nz + 0.1);
+  const arrow = count(142) > 0; // the arrow sits on the string while you have arrows
+  bowBoxes.shaft.visible = bowBoxes.head.visible = bowBoxes.fea.visible = arrow;
+  if (arrow) {
+    const ax = nx + 0.035, ay = ny + 0.01;
+    bowBoxes.shaft.position.set(ax, ay, nz - 0.36);
+    bowBoxes.head.position.set(ax, ay, nz - 0.765);
+    bowBoxes.fea.position.set(ax, ay, nz - 0.03);
+  }
+}
 function updateHand(dt) {
   const show = inGame && !dead && !panelOpen && !mapOpen && !sleepState && !menuOpen;
-  handGroup.visible = show;
+  const id = selId(), isBow = id === 261;
+  handGroup.visible = show && !isBow;
+  bowRig.visible = show && isBow;
   if (!show) return;
-  const id = selId();
   if (id !== handLastId) {
     handLastId = id; handEquip = 1;
     if (handHeldMesh) { handHold.remove(handHeldMesh); handHeldMesh = null; }
@@ -6021,6 +6257,7 @@ function updateHand(dt) {
     const o = (28 * 64 + 45) * 4;
     const hc = mySkin ? ((mySkin[o] << 16) | (mySkin[o + 1] << 8) | mySkin[o + 2]) : 0xe0b090;
     handArm.material.color.set(hc); handFist.material.color.set(hc);
+    for (const k of ['lArm', 'rArm', 'lFist', 'rFist']) bowBoxes[k].material.color.set(hc);
   }
   handEquip = Math.max(0, handEquip - dt * 5);
   if (handSwing > 0) { handSwing += dt / 0.28; if (handSwing >= 1) handSwing = (leftDown && mining) ? 0.001 : 0; } // swings when you hit, mine or use something
@@ -6031,6 +6268,7 @@ function updateHand(dt) {
   const draw = bowCharge > 0 ? Math.min(1, bowCharge) : 0; // the bow is pulled back as you draw it
   handGroup.position.set(0.5 + bx, -0.62 + by - handEquip * 0.45, -0.3 + draw * 0.14);
   handGroup.rotation.x = 0.65 - sw * 0.95 + draw * 0.12; handGroup.rotation.y = -sw * 0.15; handGroup.rotation.z = 0; // swings forward and down, arm and item together
+  if (isBow) updateBowRig(draw, bx, by);
 }
 
 // ================= Cheats =================
@@ -6319,6 +6557,126 @@ function rabbitAI(m, dt, s) {
   const np = nearestPlayer(m.x, m.y, m.z);
   if ((m.moving || m.panic > 0) && m.onGround && m.hopT <= 0) { m.vy = 4.5; m.hopT = 0.3 + Math.random() * 0.25; } // they hop
 }
+// ================= The Scrappers and their ruins =================
+let knowsUpgrade = false, ruinT = 0;
+const ruinSpawnT = {};
+function wearingCopper() { for (const k in equipped) { const g = equipped[k]; if (g && g.id >= 310 && g.id <= 313) return true; } return false; }
+function hasStrippable() { return invSlots.some(s => s && s.g) || Object.keys(equipped).some(k => equipped[k]); }
+// all the Scrappers of a ruin come for you
+function angerRuin(R) { for (const m of mobs) if (m.type === 'scrapper' && !m.dying && m.ruin === R.id) m.aggro = 120; }
+function angerScrappers(m) { if (m.ruin) angerRuin({ id: m.ruin }); else m.aggro = 120; }
+// a Scrapper takes ALL your tools and armor (and the bow) to the hoard chest of its ruin
+function stripPlayer(m) {
+  const R = m.ruin ? ruinById(m.ruin) : null;
+  const items = [];
+  for (let i = 0; i < invSlots.length; i++) { const s = invSlots[i]; if (s && s.g) { items.push({ id: s.id, g: s.g }); invSlots[i] = null; } }
+  for (const k in equipped) if (equipped[k]) { items.push({ id: equipped[k].id, g: equipped[k] }); equipped[k] = null; }
+  if (!items.length) return 0;
+  const c = R ? ruinChestFor(R) : null;
+  for (const it of items) {
+    const k = c ? c.slots.indexOf(null) : -1;
+    if (k >= 0) c.slots[k] = it; else dropItem(it.id, m.x, m.y + 0.5, m.z, { g: it.g, vy: 2, life: 300 }); // (a full chest: it drops them instead)
+  }
+  refreshUI(); refreshStats();
+  toast('A Scrapper stripped you of ALL your tools and armor! They are in the hoard chest at the heart of its ruins.', 5000);
+  return items.length;
+}
+function scrapperAI(m, dt, s) {
+  m.biteCd = Math.max(0, (m.biteCd || 0) - dt);
+  if (m.aggro > 0) m.aggro -= dt;
+  const angry = m.aggro > 0;
+  if (m.vc && !angry && Math.hypot(m.vc.x - m.x, m.vc.z - m.z) > 26) { m.rot = Math.atan2(m.vc.x - m.x, m.vc.z - m.z); m.moving = true; } // they stay in their colony
+  const np = nearestPlayer(m.x, m.y, m.z);
+  if (!np) return;
+  const strips = np.local && hasStrippable() && !wearingCopper(); // they leave you alone if you wear copper
+  if (!angry && !(strips && np.dist < 16)) return;
+  if (angry && np.dist > 40) return;
+  m.rot = Math.atan2(np.x - m.x, np.z - m.z); m.moving = true; m.chasing = true;
+  if (np.dist < 1.4 && Math.abs(np.y - m.y) < 1.6 && m.biteCd <= 0) {
+    m.biteCd = 1.2;
+    if (strips) { stripPlayer(m); m.aggro = 0; m.panic = 6; m.fleeX = np.x; m.fleeZ = np.z; } // grabs everything and runs off
+    else mobBite(s.dmg, m, np);
+  }
+}
+function ruinTick(dt) {
+  if (DIM !== 1 || !RUINS_ON || net.mode === 'guest') return;
+  ruinT += dt;
+  if (ruinT < 2) return;
+  ruinT = 0;
+  const ps = [{ x: p.x, z: p.z }];
+  if (net.mode === 'host') for (const id in net.players) ps.push(net.players[id]);
+  for (const pl of ps) {
+    const cx0 = Math.floor(pl.x / RUIN_CELL), cz0 = Math.floor(pl.z / RUIN_CELL);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const R = ruinInCell(cx0 + a, cz0 + b);
+      if (!R) continue;
+      const mx = R.x0 + 14, mz = R.z0 + 14;
+      if (Math.hypot(pl.x - mx, pl.z - mz) > 80 || (ruinSpawnT[R.id] || 0) > worldTime) continue;
+      const have = mobs.filter(m => m.type === 'scrapper' && m.ruin === R.id && !m.dying).length;
+      if (have >= R.colony) continue;
+      for (let n = have === 0 ? 6 : 1; n > 0; n--) { // a colony fills up: six at once at first, then one at a time
+        for (let tries = 0; tries < 8; tries++) {
+          const x = R.x0 + 3 + Math.floor(Math.random() * 23) + 0.5, z = R.z0 + 3 + Math.floor(Math.random() * 23) + 0.5, y = R.y0 + 1;
+          if (!chunks.has(ck(Math.floor(x) >> 4, Math.floor(z) >> 4))) continue;
+          if (getBlock(Math.floor(x), y, Math.floor(z)) !== 0 || getBlock(Math.floor(x), y + 1, Math.floor(z)) !== 0) continue;
+          const m = spawnMob('scrapper', x, y, z);
+          m.ruin = R.id; m.vc = { x: mx, z: mz };
+          break;
+        }
+      }
+      ruinSpawnT[R.id] = worldTime + 3;
+    }
+  }
+}
+// signs in the ruins, the upgrade recipe and the anvil
+function signClue(h) {
+  const R = DIM === 1 ? ruinAtXZ(h[0], h[2]) : null;
+  if (R) for (let i = 0; i < 5; i++) if (h[0] - R.x0 === RUIN_SIGNS[i][0] && h[2] - R.z0 === RUIN_SIGNS[i][1]) { toast(ruinSignText(R, i), 9000); return; }
+  toast('The writing has faded away.');
+}
+function learnRecipe() {
+  if (knowsUpgrade) { toast('You already know how to reinforce tools and armor at an anvil.'); return; }
+  take(161, 1);
+  knowsUpgrade = true;
+  toast('You learned to reinforce tools and armor! Hold one at an anvil with 3 liftite ingots and right-click.', 6000);
+}
+function useAnvil() {
+  const g = selGear();
+  if (!g || !(TOOLS[g.id] || ARMOR[g.id])) { toast('Hold a tool or a piece of armor and right-click the anvil to reinforce it.'); return; }
+  if (!knowsUpgrade) { toast('You do not know how yet. Recipes for the anvil are hidden in the secret rooms of the ruins in the Lift dimension.', 4500); return; }
+  if (g.up) { toast('That is already reinforced.'); return; }
+  if (count(151) < 3) { toast('Reinforcing needs 3 liftite ingots.'); return; }
+  take(151, 3);
+  g.up = 1; g.dur = maxDur(g.id); // repaired as well
+  refreshUI(); refreshStats();
+  toast('Reinforced! ' + (TOOLS[g.id] ? 'It hits 2 harder.' : 'It gives 1 more armor.'));
+}
+function nextToRuin() {}
+// ================= The Mist =================
+// It blinks in and out of sight and you hear it whistling. It creeps up on you, but freezes while you look at it.
+// Nothing can hurt it: the only way to kill it is to find the Mist Heart, which glows in the top of a tree somewhere in the dark forest.
+let mistToastAt = 0;
+function mistWhistle() { /* the whistling sound will be added later */ }
+function lookedAt(m) { // is it in front of your eyes (within about 37 degrees)?
+  const cp = Math.cos(pitch), fx = -Math.sin(yaw) * cp, fy = Math.sin(pitch), fz = -Math.cos(yaw) * cp;
+  const vx = m.x - p.x, vy = (m.y + 0.8) - (p.y + eyeH), vz = m.z - p.z, d = Math.hypot(vx, vy, vz) || 1;
+  return (fx * vx + fy * vy + fz * vz) / d > 0.8;
+}
+function mistAI(m, dt, s) {
+  m.blink = (m.blink || 0) - dt;
+  if (m.blink <= 0) { m.shown = !m.shown; m.blink = 1.2 + Math.random() * 2.8; m.group.visible = m.shown; if (m.shown) mistWhistle(); } // in sight, out of sight
+  m.biteCd = Math.max(0, (m.biteCd || 0) - dt);
+  const np = nearestPlayer(m.x, m.y, m.z);
+  if (!np || np.dist > 45) { m.moving = false; m.chasing = false; return; }
+  if (np.local && lookedAt(m)) { m.moving = false; m.chasing = false; return; } // it stops dead while you look at it
+  m.rot = Math.atan2(np.x - m.x, np.z - m.z); m.moving = true; m.chasing = true;
+  if (np.dist < 1.6 && Math.abs(np.y - m.y) < 1.8 && m.biteCd <= 0) { m.biteCd = 2; mobBite(s.dmg, m, np); }
+}
+function mistHeartBroken(x, y, z) { // the heart is gone: every Mist near it dies
+  let n = 0;
+  for (const m of mobs) if (m.spec.mist && !m.dying && Math.hypot(m.x - x, m.z - z) < 120) { m.group.visible = true; startDeath(m); n++; }
+  toast(n ? 'The Mist screams and fades away!' : 'You broke the Mist Heart.');
+}
 // a psychotic rabbit goes for you as soon as you are near
 function psychoAI(m, dt, s) {
   const np = nearestPlayer(m.x, m.y, m.z);
@@ -6421,7 +6779,7 @@ function colonyTick(dt) {
   }
 }
 const LEASHABLE = { sheep: 1, cow: 1, pig: 1, chicken: 1, rabbit: 1, platypus: 1, otter: 1, wolf: 1, bear: 1, alligator: 1 };
-function canLeash(m) { return !!LEASHABLE[m.type] || (m.type === 'lift' && DIM === 1); } // Lift Men can only be led in their own dimension
+function canLeash(m) { return !!LEASHABLE[m.type] || m.type === 'lift'; } // Lift Men can be led too
 const ropeMat = new THREE.MeshBasicMaterial({ color: 0xc8a060 });
 function dropRope(m) { if (m.rope) { scene.remove(m.rope); m.rope = null; } }
 function leashMob(m) {
@@ -7428,7 +7786,7 @@ scene.add(stars);
 
 const SKY_DAY = [0x87, 0xce, 0xeb], SKY_NIGHT = [0x07, 0x0b, 0x1c], SKY_GLOW = [0xf0, 0x90, 0x5a], SKY_CAVE = [0x10, 0x15, 0x1c];
 const SKY_MIST = [0x8f, 0xb0, 0xa2];
-let mist = 0, wasRain = null;
+let mist = 0, wasRain = null, darkF = 0, wasDark = null; // darkF: how deep in the Dark Forest you are (0 to 1)
 function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
 function timeOfDay() { return (worldTime % DAY_LENGTH) / DAY_LENGTH; } // 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight
 function updateDayNight(dt) {
@@ -7447,11 +7805,16 @@ function updateDayNight(dt) {
   if (wasRain === null) wasRain = inRain;
   else if (inRain !== wasRain) { wasRain = inRain; if (inRain) toast('Entering the Rainforest'); }
   mist += ((inRain ? 1 : 0) - mist) * Math.min(1, dt * 0.8 + (dt === 0 ? 1 : 0));
-  scene.fog.near = RENDER * CH * (0.45 - 0.2 * mist);
-  scene.fog.far = RENDER * CH * (0.92 - 0.25 * mist);
+  const inDark = DIM === 0 && isDark(fx, fz); // the Dark Forest: almost no sunlight, and the air closes in
+  if (wasDark === null) wasDark = inDark;
+  else if (inDark !== wasDark) { wasDark = inDark; if (inDark) toast('Entering the Dark Forest'); }
+  darkF += ((inDark ? 1 : 0) - darkF) * Math.min(1, dt * 0.6 + (dt === 0 ? 1 : 0));
+  scene.fog.near = RENDER * CH * (0.45 - 0.2 * mist - 0.3 * darkF);
+  scene.fog.far = RENDER * CH * (0.92 - 0.25 * mist - 0.45 * darkF);
   let sky = mix(SKY_NIGHT, SKY_DAY, dayF);
   sky = mix(sky, SKY_GLOW, glow * 0.5);
   sky = mix(sky, SKY_MIST, mist * 0.3 * dayF);
+  sky = mix(sky, [16, 18, 28], darkF * 0.85);
   sky = mix(SKY_CAVE, sky, expo);
   scene.background.setRGB(sky[0] / 255, sky[1] / 255, sky[2] / 255);
   scene.fog.color.setRGB(sky[0] / 255, sky[1] / 255, sky[2] / 255);
@@ -7469,6 +7832,7 @@ function updateDayNight(dt) {
   const night = (1 - dayF) * expo;
   let c = mix([255, 255, 255], [85, 98, 150], night);
   c = mix(c, [255, 205, 165], glow * 0.25 * expo);
+  c = mix(c, [60, 64, 88], darkF * 0.8 * expo);
   darkEl.style.background = 'rgb(' + Math.round(c[0]) + ',' + Math.round(c[1]) + ',' + Math.round(c[2]) + ')';
   if (DIM === 1) { // the Lift dimension: a dim purple sky, no sun, moon or stars
     scene.background.setRGB(0.2, 0.08, 0.26); scene.fog.color.setRGB(0.2, 0.08, 0.26);
@@ -7533,6 +7897,7 @@ function worldTick(dt) {
   rabbitPens(dt);
   colonyTick(dt);
   keptTick();
+  ruinTick(dt);
   updateRopes();
   villageTick(dt);
   if (net.mode !== 'guest') updateShots(dt);
