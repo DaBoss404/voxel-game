@@ -201,6 +201,7 @@
   <div id="startBox">
     <div id="startTitle">Click to play</div>
     <div id="roomInfo"></div>
+    <div id="soundRow" style="margin:8px 0;font-size:14px">Sound: <label><input type="checkbox" id="sndOn" checked> on</label> <input type="range" id="sndVol" min="0" max="100" value="60" style="vertical-align:middle;width:150px"></div>
     <div id="startHelp">WASD move, Space jump or swim up<br>Hold left click: mine blocks. Click: hit animals<br>Walk over dropped items to pick them up<br>Right click: place blocks, eat, shear sheep, fish, open crafting table<br>E: inventory, crafting and recipe book. Q: drop an item. T: chat (multiplayer)<br>Keys 1-9 or mouse wheel: pick a slot (9 slots, 64 per stack)<br>Hold Shift: sprint. Hold Down arrow: crouch<br><br>Xbox controller: plug it in, press any button, then press A to start.<br>Left stick move, right stick look, A jump, B crouch, RT mine or attack, LT place or use, LB and RB change slot, X drop, Y inventory, click the left stick to sprint, Start to pause. In menus use the D-pad and A. On this screen: A or Start resumes, View (Back) saves and quits.</div>
     <div class="btnRow"><button class="big" id="btnResume">Resume</button><button class="big alt" id="btnQuit">Save and Quit to Title</button></div>
   </div>
@@ -6805,7 +6806,7 @@ function nextToRuin() {}
 // It blinks in and out of sight and you hear it whistling. It creeps up on you, but freezes while you look at it.
 // Nothing can hurt it: the only way to kill it is to find the Mist Heart, which glows in the top of a tree somewhere in the dark forest.
 let mistToastAt = 0;
-function mistWhistle() { /* the whistling sound will be added later */ }
+function mistWhistle(m) { if (m) sfx('mist', m.x, m.y + 1, m.z, 1); } // the Mist whistles when it shows itself
 function lookedAt(m) { // is it in front of your eyes (within about 37 degrees)?
   const cp = Math.cos(pitch), fx = -Math.sin(yaw) * cp, fy = Math.sin(pitch), fz = -Math.cos(yaw) * cp;
   const vx = m.x - p.x, vy = (m.y + 0.8) - (p.y + eyeH), vz = m.z - p.z, d = Math.hypot(vx, vy, vz) || 1;
@@ -6813,7 +6814,7 @@ function lookedAt(m) { // is it in front of your eyes (within about 37 degrees)?
 }
 function mistAI(m, dt, s) {
   m.blink = (m.blink || 0) - dt;
-  if (m.blink <= 0) { m.shown = !m.shown; m.blink = 1.2 + Math.random() * 2.8; m.group.visible = m.shown; if (m.shown) mistWhistle(); } // in sight, out of sight
+  if (m.blink <= 0) { m.shown = !m.shown; m.blink = 1.2 + Math.random() * 2.8; m.group.visible = m.shown; if (m.shown) mistWhistle(m); } // in sight, out of sight
   m.biteCd = Math.max(0, (m.biteCd || 0) - dt);
   const np = nearestPlayer(m.x, m.y, m.z);
   if (!np || np.dist > 45) { m.moving = false; m.chasing = false; return; }
@@ -7529,7 +7530,7 @@ function netApplyBlocks(list) {
     for (const e of list) {
       const k = String(e[0]), idx = e[1], v = e[2];
       const parts = k.split(','), cx = Number(parts[0]), cz = Number(parts[1]);
-      if (!(idx >= 0 && idx < CH * CH * HEIGHT) || !(v >= 0 && v < 64) || !isFinite(cx + cz)) continue;
+      if (!(idx >= 0 && idx < CH * CH * HEIGHT) || !(v >= 0 && v < 256) || !isFinite(cx + cz)) continue; // (every block number, not only the first 64: fences, anvils and rugs too)
       const lx = idx % CH, lz = Math.floor(idx / CH) % CH, y = Math.floor(idx / (CH * CH));
       const ch = chunks.get(ck(cx, cz));
       if (ch) {
@@ -8008,6 +8009,414 @@ function clockText() {
   return 'Day ' + (Math.floor(worldTime / DAY_LENGTH) + 1) + '  ' + (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
 }
 
+// ================= Sound =================
+// Every sound is made on the spot by the browser (no sound files): noise and tones shaped into knocks, crunches, moos and so on.
+// Sounds that happen somewhere (a block breaking, an animal) get quieter with distance and come from the right side.
+const SND = { ctx: null, master: null, noise: null, on: true, vol: 0.6, active: 0, last: {}, debug: false, log: [], rm: {} };
+try {
+  const s = JSON.parse(localStorage.getItem('voxelgame.sound') || 'null');
+  if (s) { SND.on = s.on !== false; if (typeof s.vol === 'number') SND.vol = Math.max(0, Math.min(1, s.vol)); }
+} catch (e) {}
+function sndSave() { try { localStorage.setItem('voxelgame.sound', JSON.stringify({ on: SND.on, vol: SND.vol })); } catch (e) {} }
+function sndCtx() {
+  if (!SND.on || SND.vol <= 0 || !SND.unlocked) return null; // (the browser only allows sound after a click or key press)
+  if (!SND.ctx) {
+    const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+    if (!AC) return null;
+    try { SND.ctx = new AC(); } catch (e) { return null; }
+    SND.master = SND.ctx.createGain(); SND.master.gain.value = SND.vol; SND.master.connect(SND.ctx.destination);
+    const n = Math.floor(SND.ctx.sampleRate * 2), buf = SND.ctx.createBuffer(1, n, SND.ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    SND.noise = buf;
+  }
+  if (SND.ctx.state === 'suspended' && SND.ctx.resume) SND.ctx.resume();
+  SND.master.gain.value = SND.vol;
+  return SND.ctx;
+}
+function sndOut(c, x, y, z, vol) { // where the sound goes: louder when close, from the left or right
+  let v = vol === undefined ? 1 : vol, pan = 0;
+  if (x !== undefined) {
+    const dx = x - p.x, dy = (y === undefined ? p.y + 1 : y) - (p.y + 1), dz = z - p.z, d = Math.hypot(dx, dy, dz);
+    if (d > 36) return null;
+    v *= Math.pow(1 - d / 36, 1.6);
+    if (d > 0.5) pan = Math.max(-1, Math.min(1, (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / d));
+  }
+  if (v < 0.01) return null;
+  const g = c.createGain();
+  g.gain.value = v;
+  let last = g;
+  if (c.createStereoPanner) { const sp = c.createStereoPanner(); sp.pan.value = pan; g.connect(sp); last = sp; }
+  last.connect(SND.master);
+  return g;
+}
+function nz(c, out, t, dur, o) { // a burst of noise (shaped by a filter)
+  const src = c.createBufferSource();
+  src.buffer = SND.noise;
+  const f = c.createBiquadFilter();
+  f.type = o.type || 'lowpass';
+  f.frequency.setValueAtTime(o.f0 || 1000, t);
+  if (o.f1) f.frequency.exponentialRampToValueAtTime(Math.max(30, o.f1), t + dur);
+  f.Q.value = o.q || 0.8;
+  const g = c.createGain(), a = o.a || 0.004, peak = o.g === undefined ? 0.5 : o.g;
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(Math.max(0.0002, peak), t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(a + 0.01, dur));
+  src.connect(f); f.connect(g); g.connect(out);
+  SND.active++; src.onended = () => { SND.active--; };
+  src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
+}
+function tn(c, out, t, dur, o) { // a tone (it can glide, wobble and be softened)
+  const os = c.createOscillator();
+  os.type = o.w || 'sine';
+  os.frequency.setValueAtTime(o.f0, t);
+  if (o.f1) os.frequency.exponentialRampToValueAtTime(Math.max(30, o.f1), t + dur);
+  const g = c.createGain(), a = o.a || 0.005, peak = o.g === undefined ? 0.3 : o.g;
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(Math.max(0.0002, peak), t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(a + 0.01, dur));
+  if (o.vib) { const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = o.vibf || 6; lg.gain.value = o.vib; lfo.connect(lg); lg.connect(os.frequency); lfo.start(t); lfo.stop(t + dur + 0.05); }
+  let node = os;
+  if (o.lp) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; os.connect(f); node = f; }
+  node.connect(g); g.connect(out);
+  SND.active++; os.onended = () => { SND.active--; };
+  os.start(t); os.stop(t + dur + 0.05);
+}
+// what blocks are made of
+function matOf(b) {
+  if (b === 1 || b === 31 || b === 71) return 'grass';
+  if (b === 2 || b === 86) return 'dirt';
+  if (b === 4) return 'sand';
+  if (isWat(b)) return 'water';
+  if (isLav(b)) return 'lava';
+  if ((b >= 6 && b <= 8) || b === 26 || (b >= 12 && b <= 15) || b === 28 || b === 35 || (b >= 60 && b <= 63) || b === 67 || b === 68 || b === 85 || b === 88) return 'wood';
+  if ((b >= 9 && b <= 11) || b === 27) return 'leaf';
+  if ((b >= 23 && b <= 25) || b === 29 || b === 30) return 'plant';
+  if (b === 33) return 'glass';
+  if (isBedBlk(b) || isRugBlk(b)) return 'wool';
+  if (b === 64 || b === 65) return 'sponge';
+  if ((b >= 17 && b <= 19) || (b >= 47 && b <= 50)) return 'coral';
+  if (b === 16 || b === 20 || b === 21 || b === 22 || b === 66 || b === 73) return 'ore';
+  if (b === 72) return 'crystal';
+  if (b === 74 || b === 89) return 'metal';
+  if (b === 75 || b === 87) return 'magic';
+  return 'stone';
+}
+// n: the noise (filter type, pitch, sharpness), len: how long, g: how loud, t: a low knock tone, ring: bell-like tones
+const MATP = {
+  stone: { n: ['bandpass', 1700, 1.4], len: 0.07, g: 0.55, t: [150, 'triangle', 0.35] },
+  ore: { n: ['bandpass', 2200, 1.6], len: 0.08, g: 0.5, t: [170, 'triangle', 0.3], ring: [1800, 0.1] },
+  dirt: { n: ['lowpass', 700, 0.7], len: 0.09, g: 0.7, t: [85, 'sine', 0.5] },
+  grass: { n: ['highpass', 2600, 0.7], len: 0.12, g: 0.4, t: [95, 'sine', 0.3] },
+  sand: { n: ['highpass', 3600, 0.6], len: 0.16, g: 0.3 },
+  wood: { n: ['bandpass', 800, 1.0], len: 0.08, g: 0.45, t: [230, 'triangle', 0.55] },
+  leaf: { n: ['highpass', 4200, 0.6], len: 0.14, g: 0.28 },
+  plant: { n: ['highpass', 3800, 0.6], len: 0.1, g: 0.22 },
+  glass: { n: ['highpass', 3000, 0.8], len: 0.1, g: 0.35, ring: [2300, 0.35], ring2: [3100, 0.25] },
+  metal: { n: ['bandpass', 3000, 2], len: 0.05, g: 0.3, ring: [1250, 0.4], ring2: [1870, 0.25] },
+  wool: { n: ['lowpass', 450, 0.7], len: 0.1, g: 0.4 },
+  sponge: { n: ['lowpass', 600, 0.7], len: 0.12, g: 0.4, t: [120, 'sine', 0.2] },
+  coral: { n: ['bandpass', 1400, 1], len: 0.08, g: 0.4, t: [200, 'triangle', 0.25] },
+  crystal: { n: ['highpass', 3000, 1], len: 0.08, g: 0.25, ring: [1100, 0.35], ring2: [1650, 0.3] },
+  magic: { n: ['bandpass', 2000, 3], len: 0.15, g: 0.25, ring: [700, 0.3], sweep: true },
+  lava: { n: ['lowpass', 300, 1], len: 0.2, g: 0.5, t: [60, 'sine', 0.4] },
+  water: { n: ['bandpass', 900, 0.8], len: 0.22, g: 0.5, sweep: true }
+};
+function matSound(c, out, t, k, kind, mat) { // kind: hit (while mining), break, place, step
+  const m = MATP[mat] || MATP.stone;
+  const big = kind === 'break' ? 1.5 : (kind === 'place' ? 0.9 : (kind === 'step' ? 0.45 : 0.75));
+  const len = m.len * (kind === 'break' ? 1.9 : (kind === 'step' ? 0.8 : 1)), lo = kind === 'place' ? 0.85 : 1;
+  nz(c, out, t, len, { type: m.n[0], f0: m.n[1] * k * lo, f1: m.sweep ? m.n[1] * 2.2 : m.n[1] * 0.6, q: m.n[2], g: m.g * big });
+  if (m.t) tn(c, out, t, len, { w: m.t[1], f0: m.t[0] * k * lo, f1: m.t[0] * 0.6 * k, g: m.t[2] * big });
+  if (m.ring) tn(c, out, t, len * 3, { w: 'sine', f0: m.ring[0] * k, g: m.ring[1] * big * 0.5 });
+  if (m.ring2) tn(c, out, t + 0.012, len * 3, { w: 'sine', f0: m.ring2[0] * k, g: m.ring2[1] * big * 0.5 });
+  if (kind === 'break') nz(c, out, t + 0.05, len, { type: m.n[0], f0: m.n[1] * 0.8 * k, q: m.n[2], g: m.g * 0.9 });
+}
+// the voices of the animals (and everything else that lives): w wave, f0 to f1 pitch, len, vib wobble, lp softness, nz breathiness, rep repeats
+const VOICE = {
+  cow: { w: 'sawtooth', f0: 150, f1: 100, len: 0.9, vib: 6, vibf: 5, lp: 900, g: 0.35 },
+  sheep: { w: 'sawtooth', f0: 330, f1: 290, len: 0.55, vib: 30, vibf: 22, lp: 1500, g: 0.28 },
+  pig: { w: 'square', f0: 220, f1: 120, len: 0.3, vib: 8, vibf: 14, lp: 1100, g: 0.22, nz: 0.1 },
+  chicken: { w: 'square', f0: 700, f1: 450, len: 0.12, vib: 40, vibf: 30, lp: 2500, g: 0.15, rep: 3 },
+  wolf: { w: 'sawtooth', f0: 120, f1: 80, len: 0.6, vib: 10, vibf: 25, lp: 700, g: 0.35, nz: 0.15 },
+  bear: { w: 'sawtooth', f0: 80, f1: 55, len: 0.8, vib: 8, vibf: 20, lp: 500, g: 0.45, nz: 0.2 },
+  rabbit: { w: 'sine', f0: 1500, f1: 1900, len: 0.09, g: 0.18 },
+  psycho: { w: 'sawtooth', f0: 700, f1: 1500, len: 0.35, vib: 60, vibf: 30, lp: 3000, g: 0.3, nz: 0.2 },
+  villager: { w: 'triangle', f0: 190, f1: 150, len: 0.35, vib: 5, vibf: 6, lp: 900, g: 0.3, rep: 2 },
+  lift: { w: 'sine', f0: 110, f1: 112, len: 1.4, vib: 2, vibf: 3, g: 0.18, hum: true },
+  scrapper: { w: 'square', f0: 900, f1: 700, len: 0.06, g: 0.15, rep: 4, lp: 3000 },
+  toucan: { w: 'sawtooth', f0: 950, f1: 550, len: 0.3, vib: 20, vibf: 12, lp: 2800, g: 0.22 },
+  otter: { w: 'sine', f0: 1000, f1: 1400, len: 0.12, g: 0.18, rep: 2 },
+  platypus: { w: 'triangle', f0: 400, f1: 300, len: 0.15, g: 0.2 },
+  alligator: { w: 'sawtooth', f0: 70, f1: 50, len: 0.7, lp: 500, g: 0.35, nz: 0.3 },
+  puffer: { w: 'sine', f0: 300, f1: 700, len: 0.14, g: 0.25 },
+  axolotl: { w: 'sine', f0: 900, f1: 1200, len: 0.1, g: 0.12 },
+  dflt: { w: 'triangle', f0: 300, f1: 200, len: 0.2, g: 0.2 }
+};
+const QUIET = { clownfish: 1, bluetang: 1, angelfish: 1, turtle: 1, mist: 1 }; // these make no idle sounds
+function voiceSound(c, out, t, k, type, kind) {
+  const v = VOICE[type] || VOICE.dflt;
+  let f0 = v.f0 * k, f1 = v.f1 * k, len = v.len, g = v.g, nzg = v.nz || 0;
+  if (kind === 'hurt') { f0 *= 1.25; f1 *= 1.1; len *= 0.55; g *= 1.15; }
+  else if (kind === 'death') { f1 *= 0.5; len *= 1.6; g *= 1.1; }
+  else if (kind === 'attack') { f0 *= 0.9; len *= 0.6; g *= 1.2; nzg += 0.15; }
+  const reps = (kind === 'idle' || kind === 'attack') ? (v.rep || 1) : 1;
+  for (let i = 0; i < reps; i++) {
+    const at = t + i * len * 1.35;
+    tn(c, out, at, len, { w: v.w, f0, f1, g, vib: v.vib, vibf: v.vibf, lp: v.lp, a: Math.min(0.06, len * 0.25) });
+    if (v.hum) tn(c, out, at, len, { w: 'sine', f0: f0 * 1.5, f1: f1 * 1.5, g: g * 0.5, a: 0.3 });
+    if (nzg) nz(c, out, at, len, { type: 'lowpass', f0: 900 * k, q: 0.7, g: nzg });
+  }
+}
+const GAP = { step: 0.1, hit: 0.06, tick: 0.05, pop: 0.05, bubble: 0.3, swim: 0.3, furnace: 0.15, hurt: 0.1, swing: 0.1 };
+// play a sound: sfx('break:stone', x, y, z), sfx('hurt'), sfx('mob:cow:idle', x, y, z)
+function sfx(name, x, y, z, vol, pitch) {
+  if (SND.debug) SND.log.push(name);
+  try {
+    const c = sndCtx();
+    if (!c || !SND.noise) return;
+    const now = c.currentTime;
+    if (now - (SND.last[name] === undefined ? -9 : SND.last[name]) < (GAP[name.split(':')[0]] === undefined ? 0.03 : GAP[name.split(':')[0]])) return;
+    if (SND.active > 36) { if (now - (SND.lastAny || 0) > 3) SND.active = 0; else return; } // (too many at once; or the count got stuck)
+    SND.lastAny = now;
+    SND.last[name] = now;
+    const out = sndOut(c, x, y, z, vol);
+    if (!out) return;
+    const k = (pitch || 1) * (0.92 + Math.random() * 0.16), t = now + 0.005, a = name.split(':');
+    const kind = a[0];
+    if (kind === 'hit' || kind === 'break' || kind === 'place' || kind === 'step') { matSound(c, out, t, k, kind, a[1]); return; }
+    if (kind === 'mob') { voiceSound(c, out, t, k, a[1], a[2]); return; }
+    const R = {
+      hurt() { tn(c, out, t, 0.18, { w: 'sawtooth', f0: 220 * k, f1: 130 * k, g: 0.35, lp: 900 }); nz(c, out, t, 0.12, { type: 'lowpass', f0: 700, g: 0.2 }); },
+      death() { tn(c, out, t, 0.9, { w: 'sawtooth', f0: 200 * k, f1: 60, g: 0.35, lp: 800, a: 0.02 }); nz(c, out, t, 0.6, { type: 'lowpass', f0: 600, f1: 150, g: 0.25 }); },
+      eat() { for (let i = 0; i < 3; i++) { nz(c, out, t + i * 0.11, 0.06, { type: 'bandpass', f0: 1400 * k, q: 1.2, g: 0.4 }); tn(c, out, t + i * 0.11, 0.05, { w: 'sine', f0: 120, g: 0.25 }); } },
+      drink() { for (let i = 0; i < 3; i++) tn(c, out, t + i * 0.14, 0.12, { w: 'sine', f0: 380 * k, f1: 240 * k, g: 0.22 }); nz(c, out, t, 0.4, { type: 'bandpass', f0: 600, q: 1, g: 0.08 }); },
+      pop() { tn(c, out, t, 0.09, { w: 'sine', f0: 520 * k, f1: 840 * k, g: 0.22 }); },
+      toss() { nz(c, out, t, 0.12, { type: 'highpass', f0: 900, f1: 2500, g: 0.25 }); },
+      swing() { nz(c, out, t, 0.16, { type: 'bandpass', f0: 600, f1: 2400, q: 1, g: 0.3 }); },
+      hit() { nz(c, out, t, 0.09, { type: 'lowpass', f0: 500 * k, g: 0.6 }); tn(c, out, t, 0.1, { w: 'sine', f0: 100 * k, f1: 60, g: 0.5 }); },
+      chest_open() { tn(c, out, t, 0.28, { w: 'sawtooth', f0: 110 * k, f1: 180 * k, g: 0.12, lp: 600 }); nz(c, out, t, 0.25, { type: 'bandpass', f0: 400, q: 2, g: 0.12 }); tn(c, out, t + 0.26, 0.12, { w: 'sine', f0: 80, f1: 50, g: 0.4 }); },
+      chest_close() { tn(c, out, t, 0.2, { w: 'sawtooth', f0: 180 * k, f1: 110 * k, g: 0.1, lp: 600 }); tn(c, out, t + 0.18, 0.14, { w: 'sine', f0: 75, f1: 45, g: 0.45 }); nz(c, out, t + 0.18, 0.06, { type: 'lowpass', f0: 500, g: 0.3 }); },
+      door_open() { tn(c, out, t, 0.25, { w: 'sawtooth', f0: 90 * k, f1: 150 * k, g: 0.1, lp: 500 }); nz(c, out, t, 0.2, { type: 'bandpass', f0: 500, q: 2, g: 0.1 }); tn(c, out, t + 0.22, 0.08, { w: 'triangle', f0: 200, f1: 120, g: 0.3 }); },
+      door_close() { tn(c, out, t, 0.1, { w: 'triangle', f0: 220, f1: 110, g: 0.45 }); nz(c, out, t, 0.08, { type: 'bandpass', f0: 700, q: 1, g: 0.4 }); },
+      craft() { tn(c, out, t, 0.04, { w: 'square', f0: 880 * k, g: 0.12 }); tn(c, out, t + 0.07, 0.05, { w: 'square', f0: 1320 * k, g: 0.12 }); },
+      ui_open() { tn(c, out, t, 0.05, { w: 'sine', f0: 700, f1: 900, g: 0.12 }); },
+      ui_close() { tn(c, out, t, 0.05, { w: 'sine', f0: 900, f1: 600, g: 0.12 }); },
+      tick() { tn(c, out, t, 0.02, { w: 'sine', f0: 1200, g: 0.08 }); },
+      furnace() { const n = 2 + Math.floor(Math.random() * 3); for (let i = 0; i < n; i++) nz(c, out, t + Math.random() * 0.5, 0.03, { type: 'highpass', f0: 3000, g: 0.2 }); nz(c, out, t, 0.5, { type: 'lowpass', f0: 1800, g: 0.07 }); },
+      ding() { tn(c, out, t, 0.6, { w: 'sine', f0: 1318, g: 0.25 }); tn(c, out, t, 0.45, { w: 'sine', f0: 1760, g: 0.15 }); },
+      anvil() { for (const f of [560, 844, 1130]) tn(c, out, t, 0.9, { w: 'square', f0: f * k, g: 0.12, lp: 3000 }); nz(c, out, t, 0.05, { type: 'bandpass', f0: 3000, q: 2, g: 0.4 }); },
+      anvil_no() { tn(c, out, t, 0.15, { w: 'square', f0: 140, g: 0.2, lp: 600 }); },
+      portal() { nz(c, out, t, 1.4, { type: 'bandpass', f0: 300, f1: 2500, q: 2, g: 0.3, a: 0.4 }); tn(c, out, t, 1.4, { w: 'sine', f0: 200, f1: 800, g: 0.2, a: 0.5 }); },
+      bucket() { nz(c, out, t, 0.5, { type: 'bandpass', f0: 800, f1: 1600, q: 1.2, g: 0.35 }); for (let i = 0; i < 3; i++) tn(c, out, t + i * 0.12, 0.1, { w: 'sine', f0: 400 + i * 80, f1: 250, g: 0.14 }); },
+      bow_draw() { tn(c, out, t, 0.5, { w: 'sawtooth', f0: 60, f1: 110, g: 0.12, lp: 400, a: 0.1 }); nz(c, out, t, 0.5, { type: 'bandpass', f0: 900, q: 3, g: 0.1, a: 0.1 }); },
+      bow() { tn(c, out, t, 0.18, { w: 'triangle', f0: 260 * k, f1: 110, g: 0.4 }); nz(c, out, t, 0.04, { type: 'highpass', f0: 2000, g: 0.4 }); },
+      arrow_hit() { nz(c, out, t, 0.08, { type: 'lowpass', f0: 800, g: 0.5 }); tn(c, out, t, 0.1, { w: 'sine', f0: 130, g: 0.4 }); },
+      shear() { nz(c, out, t, 0.04, { type: 'highpass', f0: 4000, g: 0.35 }); nz(c, out, t + 0.09, 0.04, { type: 'highpass', f0: 4500, g: 0.35 }); },
+      toolbreak() { nz(c, out, t, 0.15, { type: 'bandpass', f0: 1500, q: 1.5, g: 0.5 }); [400, 300, 200].forEach((f, i) => tn(c, out, t + i * 0.06, 0.05, { w: 'square', f0: f, g: 0.15 })); },
+      armor() { tn(c, out, t, 0.05, { w: 'square', f0: 1500 * k, g: 0.1 }); tn(c, out, t + 0.05, 0.05, { w: 'square', f0: 2000 * k, g: 0.1 }); nz(c, out, t, 0.08, { type: 'highpass', f0: 4000, g: 0.2 }); },
+      splash() { nz(c, out, t, 0.35, { type: 'bandpass', f0: 700, f1: 1800, q: 0.8, g: 0.5 }); },
+      swim() { nz(c, out, t, 0.2, { type: 'bandpass', f0: 600, f1: 1200, q: 0.8, g: 0.2 }); },
+      bubble() { tn(c, out, t, 0.1, { w: 'sine', f0: 500 * k, f1: 1100 * k, g: 0.15 }); },
+      gasp() { nz(c, out, t, 0.3, { type: 'bandpass', f0: 1200, q: 1, g: 0.3, a: 0.05 }); },
+      sleep() { for (const f of [220, 277, 330]) tn(c, out, t, 1.4, { w: 'sine', f0: f, g: 0.07, a: 0.4 }); },
+      wake() { tn(c, out, t, 0.5, { w: 'sine', f0: 300, f1: 600, g: 0.12 }); },
+      jump() { nz(c, out, t, 0.08, { type: 'lowpass', f0: 600, g: 0.2 }); },
+      land() { nz(c, out, t, 0.12, { type: 'lowpass', f0: 500, g: 0.6 }); tn(c, out, t, 0.15, { w: 'sine', f0: 70, f1: 45, g: 0.6 }); },
+      drip() { tn(c, out, t, 0.12, { w: 'sine', f0: 1400, f1: 800, g: 0.12 }); tn(c, out, t + 0.15, 0.1, { w: 'sine', f0: 1000, f1: 600, g: 0.05 }); },
+      mist() { tn(c, out, t, 2.2, { w: 'sine', f0: 1050 * k, f1: 1500 * k, g: 0.18, a: 0.6, vib: 25, vibf: 5.5 }); nz(c, out, t, 2.2, { type: 'bandpass', f0: 1300, q: 8, g: 0.06, a: 0.6 }); }
+    };
+    if (R[kind]) R[kind]();
+  } catch (e) { SND.errors = (SND.errors || 0) + 1; SND.lastErr = e && e.message; /* a sound must never break the game */ }
+}
+// sounds that come from what is going on around you (called every frame while you play)
+const SNDT = { init: false, lastX: 0, lastZ: 0, stepD: 0, wasGround: true, lastVy: 0, wasWater: false, mineT: 0, lastSel: -1, lastSelB: -1, lastItem: 0, furn: {}, airPrev: 12, bubT: 0, dripT: 4, rainOn: false };
+function soundTick(dt) {
+  const T = SNDT;
+  if (!T.init) { T.init = true; T.lastX = p.x; T.lastZ = p.z; }
+  const moved = Math.hypot(p.x - T.lastX, p.z - T.lastZ);
+  if (moved > 4) T.stepD = 0; // (a teleport is not a walk)
+  const feetB = getBlock(Math.floor(p.x), Math.floor(p.y + 0.2), Math.floor(p.z)), inW = isWat(feetB);
+  if (onGround && !inW) { // footsteps
+    T.stepD += Math.min(moved, 1);
+    const stride = sprinting ? 2.2 : (crouching ? 1.4 : 1.7);
+    if (T.stepD > stride) { T.stepD = 0; sfx('step:' + matOf(getBlock(Math.floor(p.x), Math.floor(p.y - 0.3), Math.floor(p.z))), p.x, p.y, p.z, crouching ? 0.35 : (sprinting ? 0.9 : 0.6)); }
+  } else if (inW) { T.stepD += Math.min(moved, 1); if (T.stepD > 2.4) { T.stepD = 0; sfx('swim'); } }
+  else T.stepD = 0;
+  T.lastX = p.x; T.lastZ = p.z;
+  if (T.wasGround && !onGround && vy > 4) sfx('jump', undefined, undefined, undefined, 0.5);
+  if (!T.wasGround && onGround && T.lastVy < -6) sfx('land', undefined, undefined, undefined, Math.min(1, (-T.lastVy - 4) / 14));
+  if (inW && !T.wasWater && T.lastVy < -3) sfx('splash', undefined, undefined, undefined, Math.min(1, -T.lastVy / 10));
+  T.wasGround = onGround; T.lastVy = vy; T.wasWater = inW;
+  // the knocks while you mine a block
+  if (mining && !panelOpen) {
+    T.mineT -= dt;
+    if (T.mineT <= 0) { T.mineT = 0.27; sfx('hit:' + matOf(getBlock(mining.x, mining.y, mining.z)), mining.x + 0.5, mining.y + 0.5, mining.z + 0.5, 0.6); }
+  } else T.mineT = 0;
+  if (sel !== T.lastSel) { if (T.lastSel >= 0) sfx('tick'); T.lastSel = sel; } // choosing a hotbar slot
+  const cur = selId(); // a bucket filling or pouring
+  if (sel === T.lastSelB && cur !== T.lastItem && ((T.lastItem === 130 && (cur === 137 || cur === 138)) || ((T.lastItem === 137 || T.lastItem === 138) && cur === 130))) sfx('bucket');
+  T.lastSelB = sel; T.lastItem = cur;
+  for (const k in furnaces) { // furnaces crackle while they burn, and ding when something is done
+    const f = furnaces[k], pt = k.split(',').map(Number), d = Math.hypot(pt[0] + 0.5 - p.x, pt[2] + 0.5 - p.z);
+    if (f.burn > 0 && d < 12 && Math.random() < dt * 1.6) sfx('furnace', pt[0] + 0.5, pt[1] + 0.5, pt[2] + 0.5, 0.8);
+    const outN = f.out ? f.out.n : 0;
+    if (outN > (T.furn[k] || 0) && d < 24) sfx('ding', pt[0] + 0.5, pt[1] + 0.5, pt[2] + 0.5, 0.9);
+    T.furn[k] = outN;
+  }
+  const eyeB2 = getBlock(Math.floor(p.x), Math.floor(p.y + eyeH), Math.floor(p.z)); // bubbles under water, a gasp at the surface
+  if (isWat(eyeB2)) { if (air < AIR_MAX - 0.5) { T.bubT -= dt; if (T.bubT <= 0) { T.bubT = 1.1; sfx('bubble'); } } }
+  else if (T.airPrev < 6 && air > T.airPrev + 1) sfx('gasp');
+  T.airPrev = air;
+  for (const m of mobs) { // animals make their sounds now and then
+    if (m.dying) continue;
+    const dist = Math.hypot(m.x - p.x, m.z - p.z);
+    if (dist > 28) continue;
+    m.sndT = (m.sndT === undefined ? 2 + Math.random() * 12 : m.sndT) - dt;
+    if (m.sndT <= 0) { m.sndT = 9 + Math.random() * 14; if (!QUIET[m.type]) sfx('mob:' + m.type + ':idle', m.x, m.y + 0.8, m.z, 0.7); }
+    if (m.chasing && !m.wasChasing && !QUIET[m.type]) sfx('mob:' + m.type + ':attack', m.x, m.y + 0.8, m.z, 0.9);
+    m.wasChasing = m.chasing;
+  }
+  // rain you can hear, and drops of water in caves
+  const c = sndCtx();
+  if (c && SND.noise) {
+    if (!SND.rain) {
+      const src = c.createBufferSource(); src.buffer = SND.noise; src.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2800; f.Q.value = 0.5;
+      const g = c.createGain(); g.gain.value = 0;
+      src.connect(f); f.connect(g); g.connect(SND.master); src.start();
+      SND.rain = g;
+    }
+    const want = (DIM === 0 && p.y > SEA - 4) ? Math.min(0.2, mist * 0.2) : 0;
+    SND.rain.gain.setTargetAtTime(want, c.currentTime, 0.4);
+  }
+  if (DIM === 0 && p.y < SEA - 3 && !inW) { T.dripT -= dt; if (T.dripT <= 0) { T.dripT = 4 + Math.random() * 8; sfx('drip', p.x + (Math.random() - 0.5) * 12, p.y, p.z + (Math.random() - 0.5) * 12, 0.7); } }
+}
+// ---- the game's own actions make their sounds (each one wraps the real function) ----
+{
+  const f = hurt; hurt = function (n) { const d0 = dead; f.apply(this, arguments); if (!d0) sfx('hurt', undefined, undefined, undefined, 0.8); };
+}
+{
+  const f = die; die = function () { const d0 = dead; f.apply(this, arguments); if (!d0 && dead) sfx('death'); };
+}
+{
+  const f = eat; eat = function (id) { const h0 = hunger, ps = playerPoison; f.apply(this, arguments); if (hunger !== h0 || playerPoison !== ps) sfx(id === 132 || id === 133 ? 'drink' : 'eat'); };
+}
+{
+  const f = breakBlock; breakBlock = function (r) { const b = r && r.b; f.apply(this, arguments); if (r && b && getBlock(r.hit[0], r.hit[1], r.hit[2]) !== b) sfx('break:' + matOf(b), r.hit[0] + 0.5, r.hit[1] + 0.5, r.hit[2] + 0.5); };
+}
+{
+  const f = placeBlock; placeBlock = function (r) {
+    const t = r && r.prev ? r.prev.slice() : null, before = t ? getBlock(t[0], t[1], t[2]) : 0;
+    f.apply(this, arguments);
+    if (t) { const after = getBlock(t[0], t[1], t[2]); if (after !== before && after !== 0) sfx('place:' + matOf(after), t[0] + 0.5, t[1] + 0.5, t[2] + 0.5); }
+  };
+}
+{
+  const f = damageMob; damageMob = function (m, dmg, fx, fz, killer) {
+    const hp0 = m.hp, d0 = m.dying;
+    f.apply(this, arguments);
+    if (!d0 && m.hp < hp0) { sfx('hit', m.x, m.y + 0.8, m.z, 0.7); sfx('mob:' + m.type + ':hurt', m.x, m.y + 0.8, m.z, 0.9); }
+  };
+}
+{
+  const f = hitMob; hitMob = function (m) { f.apply(this, arguments); if (m && m.puppet && !m.dying && !m.tamed) { sfx('hit', m.x, m.y + 0.8, m.z, 0.7); sfx('mob:' + m.type + ':hurt', m.x, m.y + 0.8, m.z, 0.9); } };
+}
+{
+  const f = startDeath; startDeath = function (m) { f.apply(this, arguments); sfx('mob:' + m.type + ':death', m.x, m.y + 0.8, m.z, 1); };
+}
+{
+  const f = attackDown; attackDown = function () {
+    const bow = selId() === 261;
+    f.apply(this, arguments);
+    if (bow || sleepState) return;
+    if (attackedPress) sfx('hit', undefined, undefined, undefined, 0.5);
+    else if (!raycastBlocks(5)) sfx('swing');
+  };
+}
+{
+  const f = dropSlot; dropSlot = function (i) { const had = !!invSlots[i]; f.apply(this, arguments); if (had) sfx('toss'); };
+}
+{
+  const f = takeCraft; takeCraft = function () { f.apply(this, arguments); sfx('craft'); };
+}
+{
+  const f = openPanel; openPanel = function (mode) {
+    f.apply(this, arguments);
+    if (mode === 'chest') sfx('chest_open');
+    else if (mode === 'trade') { sfx('ui_open'); sfx('mob:villager:idle'); }
+    else sfx('ui_open');
+  };
+}
+{
+  const f = closePanel; closePanel = function () { const was = panelOpen, mode = panelMode; f.apply(this, arguments); if (was) sfx(mode === 'chest' ? 'chest_close' : 'ui_close'); };
+}
+{
+  const f = toggleDoor; toggleDoor = function (x, y, z) { f.apply(this, arguments); sfx(isDoorOpen(getBlock(x, y, z)) ? 'door_open' : 'door_close', x + 0.5, y + 0.5, z + 0.5); };
+}
+{
+  const f = startSleep; startSleep = function () { f.apply(this, arguments); sfx('sleep'); };
+}
+{
+  const f = endSleep; endSleep = function () { const was = sleepState; f.apply(this, arguments); if (was) sfx('wake'); };
+}
+{
+  const f = swapDim; swapDim = function () { f.apply(this, arguments); sfx('portal'); };
+}
+{
+  const f = useAnvil; useAnvil = function () { const g = selGear(), up0 = g && g.up; f.apply(this, arguments); sfx(g && g.up && !up0 ? 'anvil' : 'anvil_no'); };
+}
+{
+  const f = startBow; startBow = function () { f.apply(this, arguments); sfx('bow_draw'); };
+}
+{
+  const f = releaseBow; releaseBow = function () { const n0 = count(142); f.apply(this, arguments); if (count(142) < n0) sfx('bow'); };
+}
+{
+  const f = shearSheep; shearSheep = function (m, killer) { f.apply(this, arguments); if (!killer) sfx('shear', m.x, m.y + 0.8, m.z); };
+}
+{
+  const f = equipSlot; equipSlot = function () { f.apply(this, arguments); sfx('armor'); };
+}
+{
+  const f = wearSel; wearSel = function (n) { const g = selGear(); f.apply(this, arguments); if (g && !invSlots.some(s => s && s.g === g)) sfx('toolbreak'); };
+}
+{
+  const f = toast; toast = function (m, ms) { f.apply(this, arguments); if (typeof m === 'string' && m.charAt(0) === '+') sfx('pop'); }; // something was picked up
+}
+{
+  const f = visibleArrow; visibleArrow = function (m) { const n = f.apply(this, arguments); if (n) sfx('bow', n[0], n[1], n[2], 0.9); return n; };
+}
+{
+  const f = remoteMine; remoteMine = function (m) { // a friend knocking on a block
+    f.apply(this, arguments);
+    if (m && typeof m.id === 'string' && Number(m.p) >= 0) {
+      const now = performance.now();
+      if (now - (SND.rm[m.id] || 0) > 280) { SND.rm[m.id] = now; sfx('hit:' + matOf(getBlock(m.x | 0, m.y | 0, m.z | 0)), (m.x | 0) + 0.5, (m.y | 0) + 0.5, (m.z | 0) + 0.5, 0.8); }
+    }
+  };
+}
+{
+  const f = netApplyBlocks; netApplyBlocks = function (list) { // a friend broke or placed a block
+    const pre = [];
+    if (Array.isArray(list) && list.length <= 12) for (const e of list) {
+      const parts = String(e[0]).split(','), cx = Number(parts[0]), cz = Number(parts[1]), idx = e[1], ch = chunks.get(ck(cx, cz));
+      if (ch && idx >= 0 && idx < CH * CH * HEIGHT) pre.push({ x: cx * CH + idx % CH, y: Math.floor(idx / (CH * CH)), z: cz * CH + Math.floor(idx / CH) % CH, was: ch.data[idx], now: e[2] });
+    }
+    f.apply(this, arguments);
+    let n = 0;
+    for (const q of pre) {
+      if (q.was === q.now || isFluid(q.was) || isFluid(q.now) || n >= 3) continue;
+      n++;
+      if (q.now === 0) sfx('break:' + matOf(q.was), q.x + 0.5, q.y + 0.5, q.z + 0.5);
+      else sfx('place:' + matOf(q.now), q.x + 0.5, q.y + 0.5, q.z + 0.5);
+    }
+  };
+}
+// the first touch or key press lets the browser play sound; the volume control in the pause menu
+function sndUnlock() { SND.unlocked = true; sndCtx(); }
+if (typeof addEventListener === 'function') for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, sndUnlock, { once: true, capture: true });
+{
+  const row = document.getElementById('soundRow'), on = document.getElementById('sndOn'), vol = document.getElementById('sndVol');
+  if (row && row.addEventListener) { row.addEventListener('click', (e) => e.stopPropagation()); row.addEventListener('pointerdown', (e) => e.stopPropagation()); } // (a click here must not resume the game)
+  if (on) { on.checked = SND.on; on.onchange = () => { SND.on = on.checked; sndSave(); if (SND.on) sfx('pop'); }; }
+  if (vol) { vol.value = Math.round(SND.vol * 100); vol.oninput = () => { SND.vol = vol.value / 100; sndSave(); if (SND.master) SND.master.gain.value = SND.vol; sfx('pop'); }; }
+}
 // ================= Main loop =================
 let last = performance.now(), frames = 0, fpsTimer = 0, fps = 0, frameNo = 0;
 // everything that happens while you are in a world (it freezes while the pause screen is up)
@@ -8015,6 +8424,7 @@ let last = performance.now(), frames = 0, fpsTimer = 0, fps = 0, frameNo = 0;
 function playerTick(dt) {
   if (sleepState) { updateSleep(dt); return; }
   update(dt);
+  soundTick(dt);
   checkPortal(dt);
   updateSurvival(dt);
   updateMining(dt);
