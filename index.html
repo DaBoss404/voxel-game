@@ -282,7 +282,7 @@
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
 <script>
 // If something goes wrong, show the error on screen instead of failing silently
-var GAME_BUILD = 26;
+var GAME_BUILD = 27;
 window.__framed = false; // set once the game has drawn its first frame
 function showGameError(text) {
   var d = document.getElementById('errBox');
@@ -2848,7 +2848,7 @@ const MOBS = {
   otter:    { hp: 10, speed: 1.3, bw: 0.35, bh: 0.3, bl: 0.85, legH: 0.15, legW: 0.1, hs: 0.3, color: 0x7a5230, head: 0x8a6240, leg: 0x5a3a20, legs: 4, r: 0.35, aquatic: true, swims: true, otter: true, dmg: 2 },
   alligator: { hp: 40, speed: 0.6, bw: 0.6, bh: 0.4, bl: 1.6, legH: 0.2, legW: 0.16, hs: 0.45, color: 0x3a6a2a, head: 0x2f5a22, leg: 0x2f5a22, legs: 4, r: 0.6, aquatic: true, swims: true, alligator: true },
   scrapper: { hp: 14, speed: 1.6, bw: 0.45, bh: 0.55, bl: 0.3, legH: 0.4, legW: 0.15, hs: 0.38, color: 0x6a5470, head: 0x8a7a6a, leg: 0x3a2a44, legs: 2, r: 0.3, scrapper: true, dmg: 2 },
-  mist:     { hp: 30, speed: 2.2, bw: 0.55, bh: 1.3, bl: 0.35, legH: 0.35, legW: 0.3, hs: 0.5, color: 0xcfd8ff, head: 0xe6ecff, leg: 0xb0b8e8, legs: 2, r: 0.4, mist: true, dmg: 4 }, // the Mist: it cannot be hurt, only killed through its heart
+  mist:     { hp: 30, speed: 2.8, bw: 0.5, bh: 0.55, bl: 1.0, legH: 0.55, legW: 0.15, hs: 0.38, color: 0x9aa3b5, head: 0xb4bccb, leg: 0x6f7788, legs: 4, r: 0.45, mist: true, dmg: 6 }, // the Mist: it cannot be hurt, only killed through its heart
   psycho:   { hp: 9, speed: 1.5, bw: 0.34, bh: 0.34, bl: 0.6, legH: 0.14, legW: 0.09, hs: 0.24, color: 0x7a3030, head: 0x8a3636, leg: 0x4a1a1a, legs: 4, r: 0.3, rabbit: true, psycho: true, dmg: 3 }, // triple the health of a rabbit
   rabbit:   { hp: 3, speed: 1.1, bw: 0.28, bh: 0.28, bl: 0.5, legH: 0.12, legW: 0.08, hs: 0.2, color: 0xb89a70, head: 0xb89a70, leg: 0x9a7a50, legs: 4, r: 0.25, rabbit: true },
   bear:     { hp: 60, speed: 1.0, bw: 0.9, bh: 0.9, bl: 1.5, legH: 0.55, legW: 0.3, hs: 0.6, color: 0x5a3a22, head: 0x4a2e1a, leg: 0x3a2412, legs: 4, r: 0.7, bear: true, dmg: 8 }
@@ -3168,14 +3168,14 @@ function buildAlligatorExtras(g, mk, s, hy, hz) {
   part(0.3, 0.2, 1.0, 0x356426, 0, s.legH + s.bh * 0.5, -s.bl / 2 - 0.5);                      // the tail
   part(0.14, 0.14, 0.7, 0x356426, 0, s.legH + s.bh * 0.5, -s.bl / 2 - 1.2);
 }
-function buildMistExtras(g, mk, s, hy, hz) { // long wispy arms, dark hollow eyes and a ragged tail trailing behind
+function buildMistExtras(g, mk, s, hy, hz) { // a lean pale beast: pointed ears, pale glowing eyes, a snout and a long tail
   const part = (w, h, l, c, x, y, z) => { const m = mk(w, h, l, c); m.position.set(x, y, z); g.add(m); return m; };
   for (const sx of [-1, 1]) {
-    part(0.1, 0.7, 0.1, 0xdde4ff, sx * (s.bw / 2 + 0.08), s.legH + s.bh * 0.55, 0);
-    part(0.07, 0.07, 0.04, 0x1a1a2a, sx * s.hs * 0.22, hy + 0.04, hz + s.hs / 2);
+    part(0.07, 0.2, 0.07, 0x7f8798, sx * s.hs * 0.34, hy + s.hs * 0.55, hz - 0.02);
+    part(0.07, 0.07, 0.04, 0xa8f0ff, sx * s.hs * 0.26, hy + 0.04, hz + s.hs / 2);
   }
-  part(0.3, 0.5, 0.1, 0xc4ccf0, 0, s.legH * 0.5, -0.2);
-  part(0.18, 0.4, 0.08, 0xb0b8e8, 0.05, 0.1, -0.32);
+  part(0.12, 0.12, 0.6, 0x8a92a4, 0, s.legH + s.bh * 0.7, -s.bl / 2 - 0.25);
+  part(0.2, 0.14, 0.2, 0x7f8798, 0, hy - 0.08, hz + s.hs / 2 + 0.08);
 }
 function buildScrapperExtras(g, mk, s, hy, hz) { // big pointy ears, glowing yellow eyes and a backpack of scrap
   const part = (w, h, l, c, x, y, z) => { const m = mk(w, h, l, c); m.position.set(x, y, z); g.add(m); return m; };
@@ -3292,7 +3292,7 @@ function spawnMob(type, x, y, z) {
   const made = mobs[mobs.length - 1];
   if (extra) Object.assign(made, extra);
   if (type === 'lift') made.neutral = true; // Lift Men are calm until you hit one (or attack a villager)
-  if (s.mist) { made.mats.forEach(o => { o.m.transparent = true; o.m.opacity = 0.55; }); made.shown = true; made.blink = 2 + Math.random() * 2; }
+  if (s.mist) { made.shown = true; made.mState = 'stalk'; made.visT = 5 + Math.random() * 4; } // (an animal of flesh and fur: you can see it until it whistles)
   return made;
 }
 function removeMob(m) {
@@ -6917,15 +6917,40 @@ function lookedAt(m) { // is it in front of your eyes (within about 37 degrees)?
   const vx = m.x - p.x, vy = (m.y + 0.8) - (p.y + eyeH), vz = m.z - p.z, d = Math.hypot(vx, vy, vz) || 1;
   return (fx * vx + fy * vy + fz * vz) / d > 0.8;
 }
+const MIST_RANGE = 32, MIST_FAR = 44;
+function mistShow(m, on) { m.shown = on; m.group.visible = on; }
+// You see it come. When you hear it whistle it is gone from sight for a few seconds (still coming), then it is back.
+// It stops dead while you look right at it. It hits once, and then it is gone: it only comes back after you have left its range and walked into it again.
 function mistAI(m, dt, s) {
-  m.blink = (m.blink || 0) - dt;
-  if (m.blink <= 0) { m.shown = !m.shown; m.blink = 1.2 + Math.random() * 2.8; m.group.visible = m.shown; if (m.shown) mistWhistle(m); } // in sight, out of sight
   m.biteCd = Math.max(0, (m.biteCd || 0) - dt);
-  const np = nearestPlayer(m.x, m.y, m.z);
-  if (!np || np.dist > 45) { m.moving = false; m.chasing = false; return; }
-  if (np.local && lookedAt(m)) { m.moving = false; m.chasing = false; return; } // it stops dead while you look at it
+  const np = nearestPlayer(m.x, m.y, m.z), dist = np ? np.dist : 999;
+  if (!m.mState) m.mState = 'stalk';
+  if (m.mState === 'away') {
+    m.moving = false; m.chasing = false;
+    if (dist > MIST_FAR) m.farSeen = true;
+    if (m.farSeen && dist < MIST_RANGE) { m.mState = 'stalk'; m.farSeen = false; mistShow(m, true); m.visT = 5 + Math.random() * 4; }
+    return;
+  }
+  if (m.mState === 'flee') { // after its hit it runs straight away from you, unseen
+    m.fleeT -= dt;
+    if (np) m.rot = Math.atan2(m.x - np.x, m.z - np.z);
+    m.moving = true; m.chasing = true;
+    if (m.fleeT <= 0 || dist > 34) { m.mState = 'away'; m.moving = false; m.chasing = false; m.farSeen = dist > MIST_FAR; }
+    return;
+  }
+  if (!np || dist > MIST_RANGE) { m.moving = false; m.chasing = false; return; } // out of its range it waits
+  m.visT = (m.visT === undefined ? 6 : m.visT) - dt;
+  if (m.visT <= 0) {
+    if (m.shown) { mistWhistle(m); mistShow(m, false); m.visT = 2.5 + Math.random() * 2; } // the whistle, and it is gone
+    else { mistShow(m, true); m.visT = 6 + Math.random() * 5; }
+  }
+  if (np.local && m.shown && lookedAt(m)) { m.moving = false; m.chasing = false; return; }
   m.rot = Math.atan2(np.x - m.x, np.z - m.z); m.moving = true; m.chasing = true;
-  if (np.dist < 1.6 && Math.abs(np.y - m.y) < 1.8 && m.biteCd <= 0) { m.biteCd = 2; mobBite(s.dmg, m, np); }
+  if (dist < 1.7 && Math.abs(np.y - m.y) < 1.8 && m.biteCd <= 0) { // one hit, and it is gone
+    mobBite(s.dmg, m, np);
+    mistWhistle(m); mistShow(m, false);
+    m.mState = 'flee'; m.fleeT = 5; m.biteCd = 99;
+  }
 }
 function mistHeartBroken(x, y, z) { // the heart is gone: every Mist near it dies
   let n = 0;
@@ -7624,7 +7649,7 @@ function playerList() {
 }
 function mobSnapshot() {
   return mobs.map(m => [m.nid, m.type, r2(m.x), r2(m.y), r2(m.z), r2(m.rot),
-    (m.dying ? 1 : 0) | (m.sheared ? 2 : 0) | (m.tamed ? 4 : 0) | ((m.moving || m.chasing) ? 8 : 0), m.hp]);
+    (m.dying ? 1 : 0) | (m.sheared ? 2 : 0) | (m.tamed ? 4 : 0) | ((m.moving || m.chasing) ? 8 : 0) | ((m.spec.mist && m.shown === false) ? 16 : 0), m.hp]); // (16: a Mist that is out of sight)
 }
 // called every frame: sends what changed and, on the host, who is where
 function netTick(dt) {
@@ -7795,6 +7820,7 @@ function applyMobSnapshot(list) {
     m.hp = e[7];
     const f = e[6];
     m.moving = !!(f & 8);
+    if (m.spec.mist) m.shown = !(f & 16); // friends see the Mist vanish too
     const sh = !!(f & 2);
     if (sh !== m.sheared && m.type === 'sheep') applySheared(m, sh);
     if ((f & 4) && !m.tamed) { m.tamed = true; m.wool.forEach(w => { w.visible = true; }); }
@@ -7821,7 +7847,7 @@ function updatePuppets(dt) {
     m.group.position.set(m.x, m.y, m.z);
     m.group.rotation.y = m.rot;
     const c = chunks.get(ck(Math.floor(m.x / CH), Math.floor(m.z / CH)));
-    m.group.visible = !!(c && c.meshed) && Math.hypot(m.x - p.x, m.z - p.z) < 60;
+    m.group.visible = !!(c && c.meshed) && Math.hypot(m.x - p.x, m.z - p.z) < 60 && !(m.spec.mist && m.shown === false);
     tickFlash(m, dt);
   }
 }
@@ -8286,9 +8312,10 @@ const MATP = {
 };
 function matSound(c, out, t, k, kind, mat) { // kind: hit (while mining), break, place, step
   const m = MATP[mat] || MATP.stone;
+  if (mat !== 'magic') k *= 0.62; // block sounds are lower now (the magic ones, for the Mist Heart block and the portal, stay as they were)
   const big = kind === 'break' ? 1.5 : (kind === 'place' ? 0.9 : (kind === 'step' ? 0.45 : 0.75));
   const len = m.len * (kind === 'break' ? 1.9 : (kind === 'step' ? 0.8 : 1)), lo = kind === 'place' ? 0.85 : 1;
-  nz(c, out, t, len, { type: m.n[0], f0: m.n[1] * k * lo, f1: m.sweep ? m.n[1] * 2.2 : m.n[1] * 0.6, q: m.n[2], g: m.g * big });
+  nz(c, out, t, len, { type: m.n[0], f0: m.n[1] * k * lo, f1: (m.sweep ? m.n[1] * 2.2 : m.n[1] * 0.6) * k, q: m.n[2], g: m.g * big });
   if (m.t) tn(c, out, t, len, { w: m.t[1], f0: m.t[0] * k * lo, f1: m.t[0] * 0.6 * k, g: m.t[2] * big });
   if (m.ring) tn(c, out, t, len * 3, { w: 'sine', f0: m.ring[0] * k, g: m.ring[1] * big * 0.5 });
   if (m.ring2) tn(c, out, t + 0.012, len * 3, { w: 'sine', f0: m.ring2[0] * k, g: m.ring2[1] * big * 0.5 });
@@ -8619,7 +8646,7 @@ function worldTick(dt) {
       const m = mobs[i];
       const c = chunks.get(ck(Math.floor(m.x / CH), Math.floor(m.z / CH)));
       if (c && c.meshed) updateMob(m, dt);
-      m.group.visible = Math.hypot(m.x - p.x, m.z - p.z) < 60;
+      m.group.visible = Math.hypot(m.x - p.x, m.z - p.z) < 60 && !(m.spec.mist && m.shown === false);
     }
   }
   if (frameNo % 60 === 0) {
